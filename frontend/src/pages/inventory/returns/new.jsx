@@ -1,0 +1,138 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
+import MainLayout from '../../../components/layout/MainLayout';
+import PageHeader from '../../../components/common/PageHeader';
+import apiClient from '../../../utils/api.js';
+import { cleanFormData, getApiErrorMessage } from '../../../utils/formHelpers.js';
+import useLookup from '../../../hooks/useLookup.js';
+
+export default function CreateReturn() {
+  const navigate = useNavigate();
+  const { options: customers } = useLookup('/api/customers/');
+  const { options: warehouses } = useLookup('/api/warehouses/');
+  const [isLoading, setIsLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    customer: '',
+    warehouse: '',
+    return_date: '',
+    reason: '',
+    source_document: '',
+    remarks: '',
+    original_invoice: '',
+    freight_terms: '',
+    qc_requirement: '',
+    approval_status: '',
+  });
+
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setIsLoading(true);
+    try {
+      await apiClient.post('/api/inventory/returns/', cleanFormData(formData));
+      toast.success('Return created successfully!');
+      navigate('/inventory/returns');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to create Return');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <MainLayout>
+      <PageHeader
+        title="Create Return"
+        breadcrumbs={[
+          { label: 'Inventory', path: '/inventory' },
+          { label: 'Returns', path: '/inventory/returns' },
+          { label: 'New' },
+        ]}
+      />
+      <div className="bg-white rounded-lg border border-slate-200 p-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-800 mb-4 pb-2 border-b">Return Details</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Customer <span className="text-red-500">*</span></label>
+                <select name="customer" value={formData.customer} onChange={handleChange} required className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                  <option value="">Select Customer</option>
+                  {customers.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Warehouse <span className="text-red-500">*</span></label>
+                <select name="warehouse" value={formData.warehouse} onChange={handleChange} required className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                  <option value="">Select Warehouse</option>
+                  {warehouses.map(w => <option key={w.value} value={w.value}>{w.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Return Date <span className="text-red-500">*</span></label>
+                <input type="date" name="return_date" value={formData.return_date} onChange={handleChange} required className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Reason <span className="text-red-500">*</span></label>
+                <select name="reason" value={formData.reason} onChange={handleChange} required className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                  <option value="">Select Reason</option>
+                  <option value="Defective">Defective</option>
+                  <option value="Wrong Item">Wrong Item</option>
+                  <option value="Excess">Excess</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Source Document</label>
+                <input type="text" name="source_document" value={formData.source_document} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Original Invoice</label>
+                <input type="text" name="original_invoice" value={formData.original_invoice} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Freight Terms</label>
+                <select name="freight_terms" value={formData.freight_terms} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                  <option value="">Select Freight Terms</option>
+                  <option value="PAID">Paid</option>
+                  <option value="TO_PAY">To Pay</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">QC Requirement</label>
+                <select name="qc_requirement" value={formData.qc_requirement} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                  <option value="">Select QC Requirement</option>
+                  <option value="Required">Required</option>
+                  <option value="Not Required">Not Required</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Approval Status</label>
+                <select name="approval_status" value={formData.approval_status} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                  <option value="">Select Status</option>
+                  <option value="Draft">Draft</option>
+                  <option value="Pending">Pending</option>
+                  <option value="Approved">Approved</option>
+                  <option value="Rejected">Rejected</option>
+                </select>
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-slate-700 mb-1">Remarks</label>
+                <textarea name="remarks" value={formData.remarks} onChange={handleChange} rows={3} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500" />
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <button type="button" onClick={() => navigate(-1)} className="px-6 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
+            <button type="submit" disabled={isLoading} className="px-6 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">{isLoading ? 'Saving...' : 'Save'}</button>
+          </div>
+        </form>
+      </div>
+    </MainLayout>
+  );
+}

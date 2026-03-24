@@ -1,0 +1,240 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base Styles */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-neutral-50 text-neutral-900 antialiased;
+}
+
+/* Typography */
+h1 {
+  @apply text-4xl font-bold tracking-tight;
+}
+
+h2 {
+  @apply text-3xl font-bold tracking-tight;
+}
+
+h3 {
+  @apply text-2xl font-semibold;
+}
+
+h4 {
+  @apply text-xl font-semibold;
+}
+
+h5 {
+  @apply text-lg font-semibold;
+}
+
+h6 {
+  @apply text-base font-semibold;
+}
+
+p {
+  @apply text-base leading-relaxed;
+}
+
+a {
+  @apply text-primary-600 hover:text-primary-700 transition-colors duration-150;
+}
+
+/* Form Styles */
+input[type='text'],
+input[type='email'],
+input[type='password'],
+input[type='number'],
+input[type='date'],
+input[type='time'],
+textarea,
+select {
+  @apply w-full px-3 py-2 border border-neutral-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors duration-150;
+}
+
+input[type='checkbox'],
+input[type='radio'] {
+  @apply cursor-pointer;
+}
+
+/* Button Styles */
+button {
+  @apply font-medium transition-all duration-150;
+}
+
+button:disabled {
+  @apply opacity-50 cursor-not-allowed;
+}
+
+/* Table Styles */
+table {
+  @apply w-full border-collapse;
+}
+
+thead {
+  @apply bg-neutral-100 border-b border-neutral-300;
+}
+
+th {
+  @apply px-4 py-3 text-left font-semibold text-neutral-700;
+}
+
+td {
+  @apply px-4 py-3 border-b border-neutral-200;
+}
+
+tbody tr:hover {
+  @apply bg-neutral-50 transition-colors duration-150;
+}
+
+/* Card Styles */
+.card {
+  @apply bg-white rounded-lg shadow-md p-6 border border-neutral-200;
+}
+
+.card-header {
+  @apply border-b border-neutral-200 pb-4 mb-4;
+}
+
+.card-body {
+  @apply p-0;
+}
+
+.card-footer {
+  @apply border-t border-neutral-200 pt-4 mt-4;
+}
+
+/* Badge Styles */
+.badge {
+  @apply inline-block px-2 py-1 text-xs font-semibold rounded-full;
+}
+
+.badge-primary {
+  @apply bg-primary-100 text-primary-700;
+}
+
+.badge-secondary {
+  @apply bg-secondary-100 text-secondary-700;
+}
+
+.badge-success {
+  @apply bg-success-100 text-success-700;
+}
+
+.badge-danger {
+  @apply bg-danger-100 text-danger-700;
+}
+
+.badge-warning {
+  @apply bg-warning-100 text-warning-700;
+}
+
+.badge-neutral {
+  @apply bg-neutral-100 text-neutral-700;
+}
+
+/* Alert Styles */
+.alert {
+  @apply relative w-full px-4 py-3 rounded-md border;
+}
+
+.alert-primary {
+  @apply bg-primary-50 border-primary-300 text-primary-700;
+}
+
+.alert-success {
+  @apply bg-success-50 border-success-300 text-success-700;
+}
+
+.alert-danger {
+  @apply bg-danger-50 border-danger-300 text-danger-700;
+}
+
+.alert-warning {
+  @apply bg-warning-50 border-warning-300 text-warning-700;
+}
+
+/* Loading Spinner */
+.spinner {
+  @apply inline-block animate-spin rounded-full border-4 border-neutral-300 border-t-primary-600;
+}
+
+.spinner-sm {
+  @apply w-4 h-4;
+}
+
+.spinner-md {
+  @apply w-6 h-6;
+}
+
+.spinner-lg {
+  @apply w-8 h-8;
+}
+
+/* Responsive Grid */
+.grid-responsive {
+  @apply grid gap-6;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+
+/* Utility Classes */
+.truncate-1 {
+  @apply truncate;
+}
+
+.truncate-2 {
+  @apply line-clamp-2;
+}
+
+.truncate-3 {
+  @apply line-clamp-3;
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Scrollbar Styles */
+::-webkit-scrollbar {
+  @apply w-2 h-2;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-neutral-100;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-neutral-400 rounded hover:bg-neutral-500;
+}
+
+/* Print Styles */
+@media print {
+  body {
+    @apply bg-white;
+  }
+
+  .no-print {
+    @apply hidden;
+  }
+
+  table {
+    @apply border-collapse;
+  }
+
+  thead {
+    @apply bg-neutral-200;
+  }
+}
