@@ -98,8 +98,33 @@ export default function usePermissions() {
     if (isLoading) return false;
     return permissions.some(p => (p.module_name === moduleName || p.module?.name === moduleName) && p.can_delete);
   };
+  const canApprove = (moduleName) => {
+    if (isSuperuser || isAdmin) return true;
+    if (isLoading) return false;
+    return permissions.some(p => (p.module_name === moduleName || p.module?.name === moduleName) && p.can_approve);
+  };
+  const canReject = (moduleName) => {
+    if (isSuperuser || isAdmin) return true;
+    if (isLoading) return false;
+    return permissions.some(p => (p.module_name === moduleName || p.module?.name === moduleName) && p.can_reject);
+  };
+  const canSendEmail = (moduleName) => {
+    if (isSuperuser || isAdmin) return true;
+    if (isLoading) return false;
+    return permissions.some(p => (p.module_name === moduleName || p.module?.name === moduleName) && p.can_send_email);
+  };
+  const canExport = (moduleName) => {
+    if (isSuperuser || isAdmin) return true;
+    if (isLoading) return false;
+    return permissions.some(p => (p.module_name === moduleName || p.module?.name === moduleName) && p.can_export);
+  };
+  const canPrint = (moduleName) => {
+    if (isSuperuser || isAdmin) return true;
+    if (isLoading) return false;
+    return permissions.some(p => (p.module_name === moduleName || p.module?.name === moduleName) && p.can_print);
+  };
 
-  return { permissions, isLoading, isAdmin, isSuperuser, role, canView, canCreate, canEdit, canDelete };
+  return { permissions, isLoading, isAdmin, isSuperuser, role, canView, canCreate, canEdit, canDelete, canApprove, canReject, canSendEmail, canExport, canPrint };
 }
 
 /**

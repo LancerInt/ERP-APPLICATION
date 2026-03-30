@@ -494,7 +494,7 @@ class StakeholderUser(BaseModel):
 
     user = models.OneToOneField(
         User,
-        on_delete=models.PROTECT,
+        on_delete=models.CASCADE,
         related_name='stakeholder_profile'
     )
     employee_record = models.ForeignKey(

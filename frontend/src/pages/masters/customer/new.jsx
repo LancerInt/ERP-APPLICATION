@@ -136,8 +136,8 @@ export default function CreateCustomer() {
                 <label className="block text-sm font-medium text-slate-700 mb-1">Freight Terms <span className="text-red-500">*</span></label>
                 <select name="freight_terms" value={formData.freight_terms} onChange={handleChange} required className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
                   <option value="">Select...</option>
-                  <option value="PAID">Paid</option>
-                  <option value="TO_PAY">To Pay</option>
+                  <option value="PAID">Freight Paid</option>
+                  <option value="TO_COLLECT">Freight To Collect</option>
                   <option value="MIXED">Mixed</option>
                 </select>
               </div>

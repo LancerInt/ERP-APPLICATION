@@ -13,6 +13,7 @@ export default function CreatePurchaseOrder() {
   const { options: companyOptions } = useLookup('/api/companies/');
   const { options: warehouseOptions } = useLookup('/api/warehouses/');
   const { options: rfqOptions } = useLookup('/api/purchase/rfq/');
+  const { options: transporterOptions } = useLookup('/api/transporters/');
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     vendor: '',
@@ -24,6 +25,7 @@ export default function CreatePurchaseOrder() {
     expected_delivery_start: '',
     expected_delivery_end: '',
     freight_terms: '',
+    transporter: '',
     payment_terms: '',
     currency: '',
     terms_and_conditions: '',
@@ -123,6 +125,13 @@ export default function CreatePurchaseOrder() {
                   <option value="PAID">Paid</option>
                   <option value="TO_PAY">To Pay</option>
                   <option value="MIXED">Mixed</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Transporter</label>
+                <select name="transporter" value={formData.transporter} onChange={handleChange} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                  <option value="">Select Transporter</option>
+                  {transporterOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
               <div>

@@ -5,10 +5,13 @@ import PageHeader from '../../../components/common/PageHeader';
 import FilterPanel from '../../../components/common/FilterPanel';
 import DataTable from '../../../components/common/DataTable';
 import StatusBadge from '../../../components/common/StatusBadge';
+import { Pencil } from 'lucide-react';
 import useApiData from '../../../hooks/useApiData.js';
+import usePermissions from '../../../hooks/usePermissions.js';
 
 export default function ReceivableLedgerList() {
   const navigate = useNavigate();
+  const { canCreate } = usePermissions();
   const { data, isLoading, error, refetch } = useApiData('/api/sales/receivables/');
   const [page, setPage] = useState(1);
   const [sortBy, setSortBy] = useState('due_date');
@@ -70,6 +73,21 @@ export default function ReceivableLedgerList() {
         >
           {value > 0 ? `${value} days` : '-'}
         </span>
+      ),
+    },
+    {
+      field: 'actions',
+      header: '',
+      sortable: false,
+      width: '60px',
+      render: (_, row) => (
+        <button
+          onClick={(e) => { e.stopPropagation(); navigate(`/sales/receivables/${row.id}`); }}
+          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
+          title="Edit"
+        >
+          <Pencil size={15} />
+        </button>
       ),
     },
   ];
@@ -147,8 +165,7 @@ export default function ReceivableLedgerList() {
           actions={{
             onExport: () => console.log('Exporting receivables...'),
             onFilter: () => setShowFilters(!showFilters),
-            createLink: '/sales/receivables/new',
-            createLabel: 'New Entry',
+            ...(canCreate('Sales Receivable') ? { createLink: '/sales/receivables/new', createLabel: 'New Entry' } : {}),
           }}
         />
 
@@ -166,6 +183,7 @@ export default function ReceivableLedgerList() {
         {error && <div className="text-center py-8 text-red-500">Failed to load data</div>}
         <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
           <DataTable
+            exportFileName="receivables"
             columns={columns}
             data={filteredData}
             page={page}

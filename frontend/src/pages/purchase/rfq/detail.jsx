@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { ArrowLeft, Edit3, Save, X, Mail, Check, FileText } from 'lucide-react';
+import { ArrowLeft, Edit3, Save, X, Mail, Check, FileText, Trash2 } from 'lucide-react';
 import MainLayout from '../../../components/layout/MainLayout';
 import StatusBadge from '../../../components/common/StatusBadge';
 import apiClient from '../../../utils/api.js';
@@ -52,6 +52,17 @@ export default function RFQDetailPage() {
       } catch (e) { /* ignore */ }
     } catch (err) { toast.error('Failed to load RFQ'); }
     finally { setIsLoading(false); }
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm('Are you sure you want to delete this RFQ? This action cannot be undone.')) return;
+    try {
+      await apiClient.delete(`/api/purchase/rfq/${id}/`);
+      toast.success('RFQ deleted successfully');
+      navigate('/purchase/rfq');
+    } catch (err) {
+      toast.error(err.response?.data?.detail || err.response?.data?.error || 'Failed to delete');
+    }
   };
 
   const handleEdit = () => { setIsEditing(true); setEditData({ ...rfq }); setVendorsSaved(false); };
@@ -109,7 +120,11 @@ export default function RFQDetailPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 ml-8 sm:ml-0">
-            {!isEditing && canEdit('RFQ') && <button onClick={handleEdit} className="flex items-center gap-2 px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50"><Edit3 size={16} /> Edit</button>}
+            {!isEditing && canEdit('RFQ') && <>
+              <button onClick={handleEdit} className="flex items-center gap-2 px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50"><Edit3 size={16} /> Edit</button>
+              <button onClick={handleDelete} className="flex items-center gap-2 px-4 py-2 border border-red-300 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50"><Trash2 size={16} /> Delete</button>
+              <button onClick={() => navigate(`/purchase/quotes/new?rfq=${id}`)} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700"><FileText size={16} /> Quote Response</button>
+            </>}
             {isEditing && (
               <>
                 <button onClick={handleSave} disabled={isSaving} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"><Save size={16} /> {isSaving ? 'Saving...' : 'Save'}</button>

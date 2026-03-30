@@ -5,6 +5,7 @@ import PageHeader from '../../../components/common/PageHeader';
 import FilterPanel from '../../../components/common/FilterPanel';
 import DataTable from '../../../components/common/DataTable';
 import StatusBadge from '../../../components/common/StatusBadge';
+import { Pencil } from 'lucide-react';
 import useApiData from '../../../hooks/useApiData.js';
 
 export default function QuoteEvaluationList() {
@@ -30,19 +31,37 @@ export default function QuoteEvaluationList() {
 
   const columns = [
     { key: 'evaluation_id', label: 'Evaluation ID', sortable: true },
-    { key: 'rfq', label: 'RFQ', sortable: true },
+    { key: 'rfq', label: 'RFQ', sortable: true,
+      render: (value, row) => row.rfq_no || (typeof value === 'string' && value.length > 20 ? value.substring(0, 8) + '...' : value || '-'),
+    },
     {
       key: 'evaluation_date',
       label: 'Evaluation Date',
       sortable: true,
       render: (value) => value ? new Date(value).toLocaleDateString() : '-',
     },
-    { key: 'evaluated_by', label: 'Evaluated By', sortable: true },
-    { key: 'recommended_vendor', label: 'Recommended Vendor', sortable: true },
+    { key: 'evaluated_by', label: 'Evaluated By', sortable: true,
+      render: (value, row) => row.evaluated_by_name || '-',
+    },
+    { key: 'recommended_vendor_name', label: 'Recommended Vendor', sortable: true },
     {
       key: 'approval_status',
-      label: 'Approval Status',
-      render: (value) => <StatusBadge status={value} />,
+      label: 'Status',
+      render: (value, row) => <StatusBadge status={row.approval_status_display || value} />,
+    },
+    {
+      key: 'actions',
+      label: '',
+      sortable: false,
+      render: (_, row) => (
+        <button
+          onClick={(e) => { e.stopPropagation(); navigate(`/purchase/evaluations/${row.id}`); }}
+          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
+          title="Edit"
+        >
+          <Pencil size={15} />
+        </button>
+      ),
     },
   ];
 
@@ -92,6 +111,7 @@ export default function QuoteEvaluationList() {
       {isLoading && <div className="text-center py-8 text-slate-500">Loading...</div>}
       {error && <div className="text-center py-8 text-red-500">Failed to load data</div>}
       <DataTable
+        exportFileName="quote-evaluations"
         columns={columns}
         data={filteredData}
         onRowClick={(row) => navigate(`/purchase/evaluations/${row.id}`)}

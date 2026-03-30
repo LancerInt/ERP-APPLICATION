@@ -13,6 +13,9 @@ from .views import (
     VendorPaymentAdviceViewSet,
     EvaluationDashboardView,
     EvaluationDashboardSubmitView,
+    VendorBillViewSet,
+    PaymentMadeViewSet,
+    VendorCreditViewSet,
 )
 
 router = DefaultRouter()
@@ -50,6 +53,21 @@ router.register(
     r'payment-advices',
     VendorPaymentAdviceViewSet,
     basename='payment-advice'
+)
+router.register(
+    r'bills',
+    VendorBillViewSet,
+    basename='vendor-bill'
+)
+router.register(
+    r'payments-made',
+    PaymentMadeViewSet,
+    basename='payment-made'
+)
+router.register(
+    r'vendor-credits',
+    VendorCreditViewSet,
+    basename='vendor-credit'
 )
 
 app_name = 'purchase'

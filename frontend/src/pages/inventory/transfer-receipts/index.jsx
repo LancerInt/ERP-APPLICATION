@@ -5,9 +5,12 @@ import PageHeader from '../../../components/common/PageHeader';
 import FilterPanel from '../../../components/common/FilterPanel';
 import DataTable from '../../../components/common/DataTable';
 import StatusBadge from '../../../components/common/StatusBadge';
+import { Pencil } from 'lucide-react';
 import useApiData from '../../../hooks/useApiData.js';
+import usePermissions from '../../../hooks/usePermissions.js';
 
 export default function StockTransferReceiptList() {
+  const { canCreate } = usePermissions();
   const { data, isLoading, error } = useApiData('/api/inventory/transfer-receipts/');
   const navigate = useNavigate();
   const [showFilters, setShowFilters] = useState(false);
@@ -45,6 +48,20 @@ export default function StockTransferReceiptList() {
       label: 'Status',
       render: (value) => <StatusBadge status={value} />,
     },
+    {
+      key: 'actions',
+      label: '',
+      sortable: false,
+      render: (_, row) => (
+        <button
+          onClick={(e) => { e.stopPropagation(); navigate(`/inventory/transfer-receipts/${row.id}`); }}
+          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
+          title="Edit"
+        >
+          <Pencil size={15} />
+        </button>
+      ),
+    },
   ];
 
   const filteredData = (data || []).filter((row) => {
@@ -76,8 +93,7 @@ export default function StockTransferReceiptList() {
         actions={{
           onFilter: () => setShowFilters(!showFilters),
           onExport: () => {},
-          createLink: '/inventory/transfer-receipts/new',
-          createLabel: 'New Receipt',
+          ...(canCreate('Stock Transfer') ? { createLink: '/inventory/transfer-receipts/new', createLabel: 'New Receipt' } : {}),
         }}
       />
       {showFilters && (
@@ -92,6 +108,7 @@ export default function StockTransferReceiptList() {
       {isLoading && <div className="text-center py-8 text-slate-500">Loading...</div>}
       {error && <div className="text-center py-8 text-red-500">Failed to load data</div>}
       <DataTable
+        exportFileName="transfer-receipts"
         columns={columns}
         data={filteredData}
         onRowClick={(row) => navigate(`/inventory/transfer-receipts/${row.id}`)}

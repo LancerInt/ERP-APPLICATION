@@ -5,10 +5,13 @@ import PageHeader from '../../../components/common/PageHeader';
 import FilterPanel from '../../../components/common/FilterPanel';
 import DataTable from '../../../components/common/DataTable';
 import StatusBadge from '../../../components/common/StatusBadge';
+import { Pencil } from 'lucide-react';
 import useApiData from '../../../hooks/useApiData.js';
+import usePermissions from '../../../hooks/usePermissions.js';
 
 export default function GodownList() {
   const navigate = useNavigate();
+  const { canCreate } = usePermissions();
   const [showFilters, setShowFilters] = useState(false);
   const [filterValues, setFilterValues] = useState({});
 
@@ -48,6 +51,20 @@ export default function GodownList() {
       label: 'Status',
       render: (value, row) => <StatusBadge status={value === false ? 'Inactive' : (value === true ? 'Active' : value)} />,
     },
+    {
+      key: 'actions',
+      label: '',
+      sortable: false,
+      render: (_, row) => (
+        <button
+          onClick={(e) => { e.stopPropagation(); navigate(`/masters/godown/${row.id}`); }}
+          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
+          title="Edit"
+        >
+          <Pencil size={15} />
+        </button>
+      ),
+    },
   ];
 
   const { data, isLoading, error, refetch } = useApiData('/api/godowns/');
@@ -74,8 +91,7 @@ export default function GodownList() {
         actions={{
           onFilter: () => setShowFilters(!showFilters),
           onExport: () => {},
-          createLink: '/masters/godown/new',
-          createLabel: 'Add Godown',
+          ...(canCreate('Warehouse') ? { createLink: '/masters/godown/new', createLabel: 'Add Godown' } : {}),
         }}
       />
       {showFilters && (
@@ -90,6 +106,7 @@ export default function GodownList() {
       {isLoading && <div className="text-center py-8 text-slate-500">Loading...</div>}
       {error && <div className="text-center py-8 text-red-500">Failed to load data</div>}
       <DataTable
+        exportFileName="godowns"
         columns={columns}
         data={filteredData}
         onRowClick={(row) => navigate(`/masters/godown/${row.id}`)}

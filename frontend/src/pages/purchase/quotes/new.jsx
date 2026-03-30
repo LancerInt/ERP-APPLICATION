@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import MainLayout from '../../../components/layout/MainLayout';
 import PageHeader from '../../../components/common/PageHeader';
@@ -129,20 +129,25 @@ function AutoFillDot({ confidence }) {
 export default function CreateQuoteResponse() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
+  const rfqFromUrl = searchParams.get('rfq');
   const isEditMode = !!id;
   const { options: rfqOptions, raw: rfqRaw } = useLookup('/api/purchase/rfq/');
+  const { raw: evalRaw } = useLookup('/api/purchase/evaluations/');
+  const evaluatedRfqIds = new Set(evalRaw.map(e => e.rfq));
+  const filteredRfqOptions = rfqOptions.filter(o => !evaluatedRfqIds.has(o.value));
   const { options: vendorOptions, raw: vendorRaw } = useLookup('/api/vendors/');
   const { options: productOptions, raw: productRaw } = useLookup('/api/products/');
   const fileInputRef = useRef(null);
 
   const [isLoading, setIsLoading] = useState(false);
+  const [fillMode, setFillMode] = useState('manual'); // 'manual' or 'autofill'
   const [formData, setFormData] = useState({
     rfq: '',
     vendor: '',
     quote_date: '',
     price_valid_till: '',
     currency: '',
-    freight_terms: '',
     payment_terms: '',
     delivery_terms: '',
     lead_time_days: '',
@@ -162,7 +167,7 @@ export default function CreateQuoteResponse() {
       setFormData({
         rfq: q.rfq || '', vendor: q.vendor || '', quote_date: q.quote_date || '',
         price_valid_till: q.price_valid_till || '', currency: q.currency || '',
-        freight_terms: q.freight_terms || '', payment_terms: q.payment_terms || '',
+        payment_terms: q.payment_terms || '',
         delivery_terms: q.delivery_terms || '', lead_time_days: q.lead_time_days || '', remarks: q.remarks || '',
       });
       if (q.quote_lines?.length > 0) {
@@ -173,6 +178,89 @@ export default function CreateQuoteResponse() {
       }
     }).catch(() => toast.error('Failed to load quote'));
   }, [id, isEditMode]);
+
+  // Auto-fill from RFQ when navigating from RFQ detail page (?rfq=UUID)
+  const [rfqAutoFilled, setRfqAutoFilled] = useState(false);
+  useEffect(() => {
+    if (!rfqFromUrl || isEditMode || rfqAutoFilled) return;
+    // Wait for rfqOptions to load before setting the value
+    if (rfqRaw.length === 0) return;
+
+    // Set RFQ field immediately
+    setFormData(prev => ({ ...prev, rfq: rfqFromUrl }));
+    setRfqAutoFilled(true);
+
+    // Fetch RFQ details to get vendor and line items
+    apiClient.get(`/api/purchase/rfq/${rfqFromUrl}/`).then(res => {
+      const rfq = res.data;
+      // Auto-fill vendor if vendors are linked
+      const vendorId = rfq.vendors?.length > 0 ? rfq.vendors[0] : '';
+      setFormData(prev => ({
+        ...prev,
+        rfq: rfqFromUrl,
+        vendor: vendorId,
+      }));
+      // Auto-fill line items from linked PR lines
+      const prLines = [];
+      (rfq.linked_prs || []).forEach(pr => {
+        (pr.lines || []).forEach(line => {
+          prLines.push({
+            product: line.product_service || '',
+            quantity: line.quantity_requested || 1,
+            uom: line.uom || 'KG',
+            unit_price: '',
+            gst: '',
+            description: line.description_override || '',
+          });
+        });
+      });
+      if (prLines.length > 0) setLineItems(prLines);
+    }).catch(() => {});
+  }, [rfqFromUrl, isEditMode, rfqAutoFilled, rfqRaw]);
+
+  /* ---------- Text extraction (from Doc Extractor) ---------- */
+  const [extractText, setExtractText] = useState('');
+  const [isExtracting, setIsExtracting] = useState(false);
+
+  const handleTextExtract = async () => {
+    if (!extractText.trim()) { toast.error('Paste or type text to extract'); return; }
+    setIsExtracting(true);
+    try {
+      const fd = new FormData();
+      fd.append('text', extractText.trim());
+      const res = await apiClient.post('/api/purchase/extract-document/', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      // Convert to parseResult format
+      const raw = res.data.raw_parser || {};
+      const d = res.data.data || {};
+      const result = {
+        extracted: raw.extracted || {},
+        line_items: raw.line_items || [],
+        confidence: raw.confidence || (res.data.confidence_summary?.overall_confidence * 100) || 0,
+        warnings: raw.warnings || [],
+      };
+      // Merge structured data
+      if (d.vendor_name?.value) result.extracted.vendor_name = d.vendor_name.value;
+      if (d.date?.value) result.extracted.quote_date = d.date.value;
+      if (d.grand_total?.value) result.extracted.total_amount = d.grand_total.value;
+      // Build line items from products if needed
+      if ((!result.line_items || result.line_items.length === 0) && d.products?.length > 0) {
+        result.line_items = d.products.map(p => ({
+          product_name: { value: p.name?.value || '', confidence: p.name?.confidence || 0.5 },
+          quantity: { value: p.quantity?.value || 1, confidence: p.quantity?.confidence || 0.5 },
+          uom: { value: p.unit?.value || 'NOS', confidence: p.unit?.confidence || 0.5 },
+          unit_price: { value: p.price_per_unit?.value || 0, confidence: p.price_per_unit?.confidence || 0.5 },
+        }));
+      }
+      setParseResult(result);
+      toast.success(`Extracted with ${Math.round(result.confidence || 0)}% confidence`);
+    } catch (err) {
+      toast.error('Text extraction failed');
+    } finally {
+      setIsExtracting(false);
+    }
+  };
 
   /* ---------- Line items state ---------- */
   const [lineItems, setLineItems] = useState([
@@ -192,17 +280,88 @@ export default function CreateQuoteResponse() {
     setLineItems(prev => prev.filter((_, i) => i !== idx));
   };
 
+  /* ---------- Attachments state ---------- */
+  const [attachments, setAttachments] = useState([]);
+
   /* ---------- File-upload state ---------- */
   const [uploadedFile, setUploadedFile] = useState(null);
   const [isParsing, setIsParsing] = useState(false);
   const [parseResult, setParseResult] = useState(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [autoFillPending, setAutoFillPending] = useState(false);
+
+  // Check sessionStorage for extracted data from Document Extractor
+  useEffect(() => {
+    if (isEditMode) return;
+    try {
+      const stored = sessionStorage.getItem('extractedQuoteData');
+      if (stored) {
+        sessionStorage.removeItem('extractedQuoteData');
+        const data = JSON.parse(stored);
+        // Build a parseResult-compatible object from the stored data
+        setParseResult({
+          extracted: data.extracted || data,
+          extracted_detailed: data.extracted_detailed || {},
+          line_items: data.line_items || data.extracted?.items || [],
+          confidence: data.confidence || 50,
+        });
+        setAutoFillPending(true);
+        setFillMode('autofill');
+      }
+    } catch (e) {
+      console.error('Failed to load extracted data from session:', e);
+    }
+  }, [isEditMode]);
 
   /* ---------- Handlers ---------- */
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+  };
+
+  // When RFQ changes, fetch RFQ details and auto-fill line items from linked PRs
+  const handleRfqChange = async (e) => {
+    const rfqId = e.target.value;
+    setFormData(prev => ({ ...prev, rfq: rfqId }));
+
+    // In autofill mode, only update the RFQ field — don't overwrite AI-extracted data
+    if (fillMode === 'autofill') return;
+
+    if (!rfqId) return;
+
+    try {
+      const res = await apiClient.get(`/api/purchase/rfq/${rfqId}/`);
+      const rfq = res.data;
+
+      // Try to load PR lines from linked PRs
+      const prIds = rfq.linked_prs || [];
+      let allPrLines = [];
+      for (const prId of prIds) {
+        try {
+          const prRes = await apiClient.get(`/api/purchase/requests/${prId}/`);
+          const prData = prRes.data;
+          const lines = prData.lines || prData.pr_lines || [];
+          allPrLines.push(...lines);
+        } catch {}
+      }
+
+      // Auto-fill line items from PR lines
+      if (allPrLines.length > 0) {
+        const newLines = allPrLines.map(line => ({
+          product: line.product_service || line.product || '',
+          quantity: line.quantity_requested || line.quantity || 1,
+          uom: line.uom || 'KG',
+          unit_price: '',
+          gst: '',
+          description: line.specification || line.description || '',
+        }));
+        setLineItems(newLines);
+        toast.success(`Auto-filled ${newLines.length} line item(s) from RFQ`);
+      }
+    } catch (err) {
+      console.error('Failed to fetch RFQ details:', err);
+    }
   };
 
   const processFile = useCallback(async (file) => {
@@ -429,18 +588,6 @@ export default function CreateQuoteResponse() {
       if (mapped) { updates.payment_terms = mapped; filled.payment_terms = getConf('payment_terms'); sources.payment_terms = getSource('payment_terms'); filledCount++; }
     }
 
-    // Freight Terms
-    const ft = getVal('delivery_terms') || getVal('freight_terms');
-    if (ft) {
-      const mapped = mapFreightTerms(ft);
-      if (mapped) {
-        updates.freight_terms = mapped;
-        filled.freight_terms = getConf('freight_terms') ?? getConf('delivery_terms');
-        sources.freight_terms = getSource('freight_terms') || getSource('delivery_terms');
-        filledCount++;
-      }
-    }
-
     // Lead Time
     const lt = getVal('lead_time_days');
     if (lt) { updates.lead_time_days = String(lt); filled.lead_time_days = getConf('lead_time_days'); sources.lead_time_days = getSource('lead_time_days'); filledCount++; }
@@ -469,11 +616,27 @@ export default function CreateQuoteResponse() {
         const price = extractLineField(item.unit_price).value ?? extractLineField(item.rate).value ?? '';
         const gst = extractLineField(item.gst).value ?? extractLineField(item.gst_percentage).value ?? (ext.gst_percentage ? (typeof ext.gst_percentage === 'object' ? ext.gst_percentage.value : ext.gst_percentage) : '');
 
-        // Match product by name or SKU code
-        const match = productRaw.find(p =>
-          (p.product_name || '').toLowerCase() === pName.toLowerCase() ||
-          (sku && (p.sku_code || '').toLowerCase() === sku.toLowerCase())
-        );
+        // Match product by name or SKU code (supports partial matching)
+        const pNameLower = (pName || '').toLowerCase().trim();
+        const skuLower = (sku || '').toLowerCase().trim();
+        const match = productRaw.find(p => {
+          const dbName = (p.product_name || '').toLowerCase();
+          const dbSku = (p.sku_code || '').toLowerCase();
+          // Exact match
+          if (dbName && dbName === pNameLower) return true;
+          if (dbSku && skuLower && dbSku === skuLower) return true;
+          // Partial match: DB name contained in extracted name or vice versa
+          if (dbName && pNameLower && (pNameLower.includes(dbName) || dbName.includes(pNameLower))) return true;
+          // SKU partial match
+          if (dbSku && skuLower && (skuLower.includes(dbSku) || dbSku.includes(skuLower))) return true;
+          // Word-based match: check if product name words appear in extracted text
+          if (dbName && pNameLower) {
+            const dbWords = dbName.split(/\s+/).filter(w => w.length > 2);
+            const matchCount = dbWords.filter(w => pNameLower.includes(w)).length;
+            if (dbWords.length > 0 && matchCount >= Math.ceil(dbWords.length * 0.6)) return true;
+          }
+          return false;
+        });
         return {
           product: match ? match.id : '',
           quantity: qty,
@@ -494,6 +657,18 @@ export default function CreateQuoteResponse() {
     if (mode === 'high') msg += ' (high confidence only)';
     toast.success(msg);
   };
+
+  // Auto-trigger fill when data comes from Document Extractor page
+  useEffect(() => {
+    if (autoFillPending && parseResult?.extracted) {
+      // Small delay to ensure lookups (vendors, rfqs, products) are loaded
+      const timer = setTimeout(() => {
+        handleAutoFill('all');
+        setAutoFillPending(false);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [autoFillPending, parseResult, vendorRaw.length, rfqRaw.length, productRaw.length]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -524,6 +699,22 @@ export default function CreateQuoteResponse() {
           });
         } catch (lineErr) {
           console.error('Failed to add quote line:', lineErr.response?.data);
+        }
+      }
+
+      // Upload attachments if any
+      if (attachments.length > 0) {
+        for (const file of attachments) {
+          try {
+            const fd = new FormData();
+            fd.append('file', file);
+            fd.append('quote', quoteId);
+            await apiClient.post(`/api/purchase/quotes/${quoteId}/attachments/`, fd, {
+              headers: { 'Content-Type': 'multipart/form-data' },
+            });
+          } catch (attErr) {
+            console.error('Failed to upload attachment:', attErr.response?.data);
+          }
         }
       }
 
@@ -581,16 +772,60 @@ export default function CreateQuoteResponse() {
         ]}
       />
 
-      {/* ====== FILE UPLOAD SECTION ====== */}
-      <div className="bg-white rounded-lg border border-slate-200 p-6 mb-6">
-        <h3 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
-          <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-primary-50 text-primary-600">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-            </svg>
-          </span>
-          Upload Quote Document
-        </h3>
+      {/* ====== FILL MODE SELECTOR ====== */}
+      {!isEditMode && (
+        <div className="bg-white rounded-lg border border-slate-200 p-4 mb-6">
+          <div className="flex items-center gap-6">
+            <span className="text-sm font-semibold text-slate-700">Fill Mode:</span>
+            <label className={`flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer transition border-2 ${fillMode === 'manual' ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+              <input type="radio" name="fillMode" value="manual" checked={fillMode === 'manual'} onChange={() => setFillMode('manual')} className="text-primary-600 focus:ring-primary-500" />
+              <div>
+                <span className="font-medium text-sm">Manual Fill</span>
+                <span className="text-xs text-slate-500 block">Select RFQ to auto-fill from linked PR data</span>
+              </div>
+            </label>
+            <label className={`flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer transition border-2 ${fillMode === 'autofill' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+              <input type="radio" name="fillMode" value="autofill" checked={fillMode === 'autofill'} onChange={() => setFillMode('autofill')} className="text-emerald-600 focus:ring-emerald-500" />
+              <div>
+                <span className="font-medium text-sm">Auto Fill (AI)</span>
+                <span className="text-xs text-slate-500 block">Upload document to extract & auto-fill fields</span>
+              </div>
+            </label>
+          </div>
+        </div>
+      )}
+
+      {/* ====== FILE UPLOAD SECTION (only in autofill mode) ====== */}
+      {fillMode === 'autofill' && <div className="bg-white rounded-lg border border-slate-200 p-6 mb-6">
+        <h3 className="text-lg font-semibold text-slate-800 mb-4">Extract Quote Data</h3>
+
+        {/* Text paste extraction section */}
+        <div className="mb-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
+          <h4 className="text-sm font-semibold text-slate-700 mb-2">Paste Text (Email, WhatsApp, OCR)</h4>
+          <textarea
+            value={extractText}
+            onChange={(e) => setExtractText(e.target.value)}
+            rows={5}
+            placeholder="Paste vendor quote text here — from email, WhatsApp message, OCR scan, etc."
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 mb-2"
+          />
+          <button
+            type="button"
+            onClick={handleTextExtract}
+            disabled={isExtracting || !extractText.trim()}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
+          >
+            {isExtracting ? (
+              <><svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> Extracting...</>
+            ) : 'Extract from Text'}
+          </button>
+        </div>
+
+        <div className="relative flex items-center my-4">
+          <div className="flex-grow border-t border-slate-200"></div>
+          <span className="px-3 text-xs text-slate-400 uppercase">or upload a file</span>
+          <div className="flex-grow border-t border-slate-200"></div>
+        </div>
 
         {/* Drop zone */}
         {!uploadedFile && (
@@ -828,7 +1063,7 @@ export default function CreateQuoteResponse() {
             )}
           </div>
         )}
-      </div>
+      </div>}
 
       {/* ====== EXISTING FORM ====== */}
       <div className="bg-white rounded-lg border border-slate-200 p-6">
@@ -842,9 +1077,9 @@ export default function CreateQuoteResponse() {
                   <AutoFillDot confidence={autoFilledFields.rfq} />
                   {fieldSources.rfq && <SourceTooltip text={fieldSources.rfq} />}
                 </label>
-                <select name="rfq" value={formData.rfq} onChange={handleChange} required className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                <select name="rfq" value={formData.rfq} onChange={handleRfqChange} required className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
                   <option value="">Select RFQ</option>
-                  {rfqOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  {filteredRfqOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
               <div>
@@ -885,19 +1120,6 @@ export default function CreateQuoteResponse() {
                   <option value="INR">INR</option>
                   <option value="USD">USD</option>
                   <option value="EUR">EUR</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center">
-                  Freight Terms <span className="text-red-500 ml-0.5">*</span>
-                  <AutoFillDot confidence={autoFilledFields.freight_terms} />
-                  {fieldSources.freight_terms && <SourceTooltip text={fieldSources.freight_terms} />}
-                </label>
-                <select name="freight_terms" value={formData.freight_terms} onChange={handleChange} required className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
-                  <option value="">Select Freight Terms</option>
-                  <option value="PAID">Paid</option>
-                  <option value="TO_PAY">To Pay</option>
-                  <option value="MIXED">Mixed</option>
                 </select>
               </div>
               <div>
@@ -1060,6 +1282,39 @@ export default function CreateQuoteResponse() {
               </div>
             );
           })()}
+
+          {/* Attachments */}
+          <div>
+            <h3 className="text-lg font-semibold text-slate-800 mb-4 pb-2 border-b">Attachments</h3>
+            <div className="space-y-3">
+              <div>
+                <input
+                  type="file"
+                  multiple
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files || []);
+                    setAttachments(prev => [...prev, ...files]);
+                    e.target.value = '';
+                  }}
+                  className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
+                />
+              </div>
+              {attachments.length > 0 && (
+                <div className="space-y-2">
+                  {attachments.map((file, idx) => (
+                    <div key={idx} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2 text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium bg-slate-200 px-1.5 py-0.5 rounded">{file.name.split('.').pop().toUpperCase()}</span>
+                        <span className="text-slate-700">{file.name}</span>
+                        <span className="text-slate-400 text-xs">({(file.size / 1024).toFixed(1)} KB)</span>
+                      </div>
+                      <button type="button" onClick={() => setAttachments(prev => prev.filter((_, i) => i !== idx))} className="text-red-500 hover:text-red-700 text-xs">Remove</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
 
           <div className="flex justify-end gap-3 pt-4 border-t">
             <button type="button" onClick={() => navigate(-1)} className="px-6 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button>

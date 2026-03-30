@@ -5,10 +5,13 @@ import PageHeader from '../../../components/common/PageHeader';
 import FilterPanel from '../../../components/common/FilterPanel';
 import DataTable from '../../../components/common/DataTable';
 import StatusBadge from '../../../components/common/StatusBadge';
+import { Pencil } from 'lucide-react';
 import useApiData from '../../../hooks/useApiData.js';
+import usePermissions from '../../../hooks/usePermissions.js';
 
 export default function TaxMasterList() {
   const navigate = useNavigate();
+  const { canCreate } = usePermissions();
   const [showFilters, setShowFilters] = useState(false);
   const [filterValues, setFilterValues] = useState({});
 
@@ -44,6 +47,20 @@ export default function TaxMasterList() {
     { key: 'effective_to', label: 'Effective To', sortable: true },
     { key: 'applicable_on', label: 'Applicable On', sortable: true },
     { key: 'company_scope', label: 'Company Scope', sortable: true },
+    {
+      key: 'actions',
+      label: '',
+      sortable: false,
+      render: (_, row) => (
+        <button
+          onClick={(e) => { e.stopPropagation(); navigate(`/masters/tax/${row.id}`); }}
+          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
+          title="Edit"
+        >
+          <Pencil size={15} />
+        </button>
+      ),
+    },
   ];
 
   const { data, isLoading, error, refetch } = useApiData('/api/taxes/');
@@ -63,8 +80,7 @@ export default function TaxMasterList() {
         actions={{
           onFilter: () => setShowFilters(!showFilters),
           onExport: () => {},
-          createLink: '/masters/tax/new',
-          createLabel: 'Add Tax Rule',
+          ...(canCreate('Tax') ? { createLink: '/masters/tax/new', createLabel: 'Add Tax Rule' } : {}),
         }}
       />
       {showFilters && (
@@ -79,6 +95,7 @@ export default function TaxMasterList() {
       {isLoading && <div className="text-center py-8 text-slate-500">Loading...</div>}
       {error && <div className="text-center py-8 text-red-500">Failed to load data</div>}
       <DataTable
+        exportFileName="tax-masters"
         columns={columns}
         data={filteredData}
         onRowClick={(row) => navigate(`/masters/tax/${row.id}`)}

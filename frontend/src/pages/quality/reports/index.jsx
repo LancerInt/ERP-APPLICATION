@@ -5,10 +5,13 @@ import PageHeader from '../../../components/common/PageHeader';
 import FilterPanel from '../../../components/common/FilterPanel';
 import DataTable from '../../../components/common/DataTable';
 import StatusBadge from '../../../components/common/StatusBadge';
+import { Pencil } from 'lucide-react';
 import useApiData from '../../../hooks/useApiData.js';
+import usePermissions from '../../../hooks/usePermissions.js';
 
 export default function QCFinalReportList() {
   const navigate = useNavigate();
+  const { canCreate } = usePermissions();
   const { data, isLoading, error } = useApiData('/api/quality/reports/');
   const [showFilters, setShowFilters] = useState(false);
   const [filterValues, setFilterValues] = useState({});
@@ -50,6 +53,20 @@ export default function QCFinalReportList() {
       sortable: true,
       render: (value) => value || <span className="text-slate-400">--</span>,
     },
+    {
+      key: 'actions',
+      label: '',
+      sortable: false,
+      render: (_, row) => (
+        <button
+          onClick={(e) => { e.stopPropagation(); navigate(`/quality/reports/${row.id}`); }}
+          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
+          title="Edit"
+        >
+          <Pencil size={15} />
+        </button>
+      ),
+    },
   ];
 
   const filteredData = (data || []).filter((row) => {
@@ -76,8 +93,7 @@ export default function QCFinalReportList() {
         actions={{
           onFilter: () => setShowFilters(!showFilters),
           onExport: () => console.log('Exporting QC reports...'),
-          createLink: '/quality/reports/new',
-          createLabel: 'New Report',
+          ...(canCreate('QC Report') ? { createLink: '/quality/reports/new', createLabel: 'New Report' } : {}),
         }}
       />
       {showFilters && (
@@ -92,6 +108,7 @@ export default function QCFinalReportList() {
       {isLoading && <div className="text-center py-8 text-slate-500">Loading...</div>}
       {error && <div className="text-center py-8 text-red-500">Failed to load data</div>}
       <DataTable
+        exportFileName="qc-reports"
         columns={columns}
         data={filteredData}
         onRowClick={(row) => navigate(`/quality/reports/${row.id}`)}

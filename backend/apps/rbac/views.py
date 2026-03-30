@@ -177,7 +177,7 @@ class RolePermissionViewSet(viewsets.ModelViewSet):
 
     queryset = RolePermission.objects.select_related('role', 'module').all()
     permission_classes = [IsAdminUser]
-    filterset_fields = ['role', 'module', 'can_view', 'can_create', 'can_edit', 'can_delete']
+    filterset_fields = ['role', 'module', 'can_view', 'can_create', 'can_edit', 'can_delete', 'can_approve', 'can_reject', 'can_send_email', 'can_export', 'can_print']
     search_fields = ['role__name', 'module__name']
     ordering_fields = ['role__name', 'module__name']
 
@@ -234,6 +234,11 @@ class RolePermissionViewSet(viewsets.ModelViewSet):
                     'can_create': perm.get('can_create', False),
                     'can_edit': perm.get('can_edit', False),
                     'can_delete': perm.get('can_delete', False),
+                    'can_approve': perm.get('can_approve', False),
+                    'can_reject': perm.get('can_reject', False),
+                    'can_send_email': perm.get('can_send_email', False),
+                    'can_export': perm.get('can_export', False),
+                    'can_print': perm.get('can_print', False),
                 },
             )
             results.append(RolePermissionSerializer(obj).data)
@@ -249,7 +254,12 @@ class RolePermissionViewSet(viewsets.ModelViewSet):
                     f"view={perm.get('can_view', False)}, "
                     f"create={perm.get('can_create', False)}, "
                     f"edit={perm.get('can_edit', False)}, "
-                    f"delete={perm.get('can_delete', False)}"
+                    f"delete={perm.get('can_delete', False)}, "
+                    f"approve={perm.get('can_approve', False)}, "
+                    f"reject={perm.get('can_reject', False)}, "
+                    f"send_email={perm.get('can_send_email', False)}, "
+                    f"export={perm.get('can_export', False)}, "
+                    f"print={perm.get('can_print', False)}"
                 ),
             )
 
@@ -332,6 +342,29 @@ class UserManagementViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(user)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def perform_update(self, serializer):
+        """Handle user update including role change and password hashing."""
+        # Extract password before serializer.save() to avoid saving plain text
+        password = self.request.data.get('password')
+        user = serializer.save()
+
+        # Hash the password properly if it was provided
+        if password:
+            user.set_password(password)
+            user.save(update_fields=['password'])
+
+        # Handle role assignment if role_id is in the request
+        role_id = self.request.data.get('role_id') or self.request.data.get('role')
+        if role_id:
+            try:
+                role = ERPRole.objects.get(pk=role_id)
+                UserRoleAssignment.objects.update_or_create(
+                    user=user,
+                    defaults={'role': role, 'assigned_by': self.request.user}
+                )
+            except ERPRole.DoesNotExist:
+                pass
 
     @action(detail=True, methods=['post'], url_path='assign-role')
     def assign_role(self, request, pk=None):
@@ -440,6 +473,11 @@ def user_permissions_view(request):
                 'can_create': True,
                 'can_edit': True,
                 'can_delete': True,
+                'can_approve': True,
+                'can_reject': True,
+                'can_send_email': True,
+                'can_export': True,
+                'can_print': True,
             }
             for m in modules
         ]
@@ -456,6 +494,11 @@ def user_permissions_view(request):
                 'can_create': rp.can_create,
                 'can_edit': rp.can_edit,
                 'can_delete': rp.can_delete,
+                'can_approve': rp.can_approve,
+                'can_reject': rp.can_reject,
+                'can_send_email': rp.can_send_email,
+                'can_export': rp.can_export,
+                'can_print': rp.can_print,
             }
             for rp in role_perms
         ]

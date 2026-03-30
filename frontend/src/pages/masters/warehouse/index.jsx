@@ -142,6 +142,7 @@ export default function WarehouseList() {
       {isLoading && <div className="text-center py-8 text-slate-500">Loading...</div>}
       {error && <div className="text-center py-8 text-red-500">Failed to load data</div>}
       <DataTable
+        exportFileName="warehouses"
         columns={columns}
         data={filteredData}
         onRowClick={(row) => navigate(`/masters/warehouse/${row.id}`)}

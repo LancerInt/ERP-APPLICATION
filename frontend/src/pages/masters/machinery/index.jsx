@@ -5,10 +5,13 @@ import PageHeader from '../../../components/common/PageHeader';
 import FilterPanel from '../../../components/common/FilterPanel';
 import DataTable from '../../../components/common/DataTable';
 import StatusBadge from '../../../components/common/StatusBadge';
+import { Pencil } from 'lucide-react';
 import useApiData from '../../../hooks/useApiData.js';
+import usePermissions from '../../../hooks/usePermissions.js';
 
 export default function MachineryList() {
   const navigate = useNavigate();
+  const { canCreate } = usePermissions();
   const [showFilters, setShowFilters] = useState(false);
   const [filterValues, setFilterValues] = useState({});
 
@@ -58,6 +61,20 @@ export default function MachineryList() {
       render: (value, row) => <StatusBadge status={row.is_active === undefined ? value : (row.is_active ? 'Active' : 'Inactive')} />,
     },
     { key: 'next_service_due', label: 'Next Service Due', sortable: true },
+    {
+      key: 'actions',
+      label: '',
+      sortable: false,
+      render: (_, row) => (
+        <button
+          onClick={(e) => { e.stopPropagation(); navigate(`/masters/machinery/${row.id}`); }}
+          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
+          title="Edit"
+        >
+          <Pencil size={15} />
+        </button>
+      ),
+    },
   ];
 
   const { data, isLoading, error, refetch } = useApiData('/api/machinery/');
@@ -85,8 +102,7 @@ export default function MachineryList() {
         actions={{
           onFilter: () => setShowFilters(!showFilters),
           onExport: () => {},
-          createLink: '/masters/machinery/new',
-          createLabel: 'Add Machine',
+          ...(canCreate('Machinery') ? { createLink: '/masters/machinery/new', createLabel: 'Add Machine' } : {}),
         }}
       />
       {showFilters && (
@@ -101,6 +117,7 @@ export default function MachineryList() {
       {isLoading && <div className="text-center py-8 text-slate-500">Loading...</div>}
       {error && <div className="text-center py-8 text-red-500">Failed to load data</div>}
       <DataTable
+        exportFileName="machinery"
         columns={columns}
         data={filteredData}
         onRowClick={(row) => navigate(`/masters/machinery/${row.id}`)}

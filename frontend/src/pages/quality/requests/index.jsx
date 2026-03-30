@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus } from 'lucide-react';
+import { Plus, Pencil } from 'lucide-react';
 import MainLayout from '../../../components/layout/MainLayout';
 import DataTable from '../../../components/common/DataTable';
 import StatusBadge from '../../../components/common/StatusBadge';
@@ -56,6 +56,21 @@ export default function QCRequestList() {
         if (!value) return '-';
         return <StatusBadge status={value} label={value} />;
       },
+    },
+    {
+      field: 'actions',
+      header: '',
+      sortable: false,
+      width: '60px',
+      render: (_, row) => (
+        <button
+          onClick={(e) => { e.stopPropagation(); navigate(`/quality/requests/${row.id}`); }}
+          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
+          title="Edit"
+        >
+          <Pencil size={15} />
+        </button>
+      ),
     },
   ];
 
@@ -114,6 +129,7 @@ export default function QCRequestList() {
         {error && <div className="text-center py-8 text-red-500">Failed to load data</div>}
         <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
           <DataTable
+            exportFileName="qc-requests"
             columns={columns}
             data={filteredData}
             page={page}

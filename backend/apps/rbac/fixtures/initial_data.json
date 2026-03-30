@@ -79,5 +79,9 @@
   {"model": "rbac.erpmodule", "pk": 59, "fields": {"name": "Audit Log", "slug": "audit-log", "description": "System audit logs", "icon": "eye", "order": 59, "is_active": true}},
   {"model": "rbac.erpmodule", "pk": 60, "fields": {"name": "User Management", "slug": "user-management", "description": "User administration", "icon": "user-plus", "order": 60, "is_active": true}},
   {"model": "rbac.erpmodule", "pk": 61, "fields": {"name": "Role Management", "slug": "role-management", "description": "Role administration", "icon": "shield", "order": 61, "is_active": true}},
-  {"model": "rbac.erpmodule", "pk": 62, "fields": {"name": "Permission Management", "slug": "permission-management", "description": "Permission administration", "icon": "lock", "order": 62, "is_active": true}}
+  {"model": "rbac.erpmodule", "pk": 62, "fields": {"name": "Permission Management", "slug": "permission-management", "description": "Permission administration", "icon": "lock", "order": 62, "is_active": true}},
+  {"model": "rbac.erpmodule", "pk": 63, "fields": {"name": "Vendor Bill", "slug": "vendor-bill", "description": "Vendor bills and invoices", "icon": "file-text", "order": 19, "is_active": true}},
+  {"model": "rbac.erpmodule", "pk": 64, "fields": {"name": "Payment Made", "slug": "payment-made", "description": "Payments made to vendors", "icon": "credit-card", "order": 20, "is_active": true}},
+  {"model": "rbac.erpmodule", "pk": 65, "fields": {"name": "Vendor Credit", "slug": "vendor-credit", "description": "Vendor credit notes", "icon": "file-minus", "order": 20, "is_active": true}},
+  {"model": "rbac.erpmodule", "pk": 66, "fields": {"name": "Freight Advice (Outbound)", "slug": "freight-advice-outbound", "description": "Outbound freight management", "icon": "navigation", "order": 24, "is_active": true}}
 ]

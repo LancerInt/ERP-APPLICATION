@@ -5,6 +5,7 @@ import PageHeader from '../../../components/common/PageHeader';
 import FilterPanel from '../../../components/common/FilterPanel';
 import DataTable from '../../../components/common/DataTable';
 import StatusBadge from '../../../components/common/StatusBadge';
+import { Pencil } from 'lucide-react';
 import useApiData from '../../../hooks/useApiData.js';
 
 export default function LeaveRequestList() {
@@ -67,6 +68,21 @@ export default function LeaveRequestList() {
       sortable: true,
       width: '120px',
       render: (value) => <StatusBadge status={value} />,
+    },
+    {
+      field: 'actions',
+      header: '',
+      sortable: false,
+      width: '60px',
+      render: (_, row) => (
+        <button
+          onClick={(e) => { e.stopPropagation(); navigate(`/hr/leave/${row.id}`); }}
+          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
+          title="Edit"
+        >
+          <Pencil size={15} />
+        </button>
+      ),
     },
   ];
 
@@ -154,6 +170,7 @@ export default function LeaveRequestList() {
         {error && <div className="text-center py-8 text-red-500">Failed to load data</div>}
         <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
           <DataTable
+            exportFileName="leave-requests"
             columns={columns}
             data={filteredData}
             page={page}

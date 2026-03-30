@@ -327,7 +327,7 @@ class PriceLineSerializer(serializers.ModelSerializer):
     class Meta:
         model = PriceLine
         fields = [
-            'id', 'price_list', 'product', 'product_name', 'uom', 'rate',
+            'id', 'product', 'product_name', 'uom', 'rate',
             'discount', 'gst', 'freight_component', 'valid_from', 'valid_to',
             'created_at', 'updated_at'
         ]
@@ -336,6 +336,7 @@ class PriceLineSerializer(serializers.ModelSerializer):
             'discount': {'required': False},
             'gst': {'required': False},
             'freight_component': {'required': False},
+            'valid_from': {'required': False},
             'valid_to': {'required': False},
         }
 
@@ -346,6 +347,7 @@ class PriceListSerializer(serializers.ModelSerializer):
     company_name = serializers.CharField(source='company.company_code', read_only=True)
     customer_name = serializers.CharField(source='customer.customer_code', read_only=True)
     line_count = serializers.SerializerMethodField()
+    price_lines = PriceLineSerializer(many=True, required=False)
 
     class Meta:
         model = PriceList
@@ -353,7 +355,7 @@ class PriceListSerializer(serializers.ModelSerializer):
             'id', 'price_list_id', 'company', 'company_name', 'customer',
             'customer_name', 'delivery_region', 'currency', 'effective_from',
             'effective_to', 'default_freight_terms', 'status', 'notes',
-            'line_count', 'is_active', 'created_at', 'updated_at'
+            'price_lines', 'line_count', 'is_active', 'created_at', 'updated_at'
         ]
         read_only_fields = [
             'id', 'created_at', 'updated_at', 'company_name', 'customer_name', 'line_count'
@@ -370,6 +372,26 @@ class PriceListSerializer(serializers.ModelSerializer):
 
     def get_line_count(self, obj):
         return obj.price_lines.count()
+
+    def create(self, validated_data):
+        lines_data = validated_data.pop('price_lines', [])
+        price_list = PriceList.objects.create(**validated_data)
+        for line_data in lines_data:
+            line_data.pop('price_list', None)
+            PriceLine.objects.create(price_list=price_list, **line_data)
+        return price_list
+
+    def update(self, instance, validated_data):
+        lines_data = validated_data.pop('price_lines', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        if lines_data is not None:
+            instance.price_lines.all().delete()
+            for line_data in lines_data:
+                line_data.pop('price_list', None)
+                PriceLine.objects.create(price_list=instance, **line_data)
+        return instance
 
 
 class PriceListDetailSerializer(serializers.ModelSerializer):

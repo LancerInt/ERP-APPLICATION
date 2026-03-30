@@ -221,6 +221,7 @@ class CreateSalesOrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = SalesOrder
         fields = [
+            'so_no',
             'customer',
             'company',
             'warehouse',
@@ -233,16 +234,18 @@ class CreateSalesOrderSerializer(serializers.ModelSerializer):
             'so_lines',
         ]
         extra_kwargs = {
+            'so_no': {'required': False, 'allow_blank': True},
+            'price_list': {'required': False, 'allow_null': True},
             'credit_terms': {'required': False, 'allow_blank': True},
             'freight_terms': {'required': False, 'allow_blank': True},
-            'customer_po_reference': {'required': False},
-            'required_ship_date': {'required': False},
+            'customer_po_reference': {'required': False, 'allow_null': True},
+            'required_ship_date': {'required': False, 'allow_null': True},
             'remarks': {'required': False, 'allow_blank': True},
         }
 
     @transaction.atomic
     def create(self, validated_data):
-        lines_data = validated_data.pop('so_lines')
+        lines_data = validated_data.pop('so_lines', [])
         sales_order = SalesOrder.objects.create(**validated_data)
 
         for line_data in lines_data:

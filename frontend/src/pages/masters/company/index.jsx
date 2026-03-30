@@ -121,6 +121,7 @@ export default function CompanyList() {
       {isLoading && <div className="text-center py-8 text-slate-500">Loading...</div>}
       {error && <div className="text-center py-8 text-red-500">Failed to load data</div>}
       <DataTable
+        exportFileName="companies"
         columns={columns}
         data={filteredData}
         onRowClick={(row) => navigate(`/masters/company/${row.id}`)}

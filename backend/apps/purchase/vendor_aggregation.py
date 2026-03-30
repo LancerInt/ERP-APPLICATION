@@ -66,8 +66,10 @@ def get_final_vendor_list(rfq, manual_vendor_ids=None):
             'vendor_name': v.vendor_name,
             'vendor_code': v.vendor_code,
             'contact_email': v.contact_email or '',
+            'contact_phone': v.contact_phone or '',
             'source': 'auto' if v.id in auto_ids else 'manual',
             'has_email': bool(v.contact_email),
+            'has_phone': bool(v.contact_phone),
         })
 
     return result

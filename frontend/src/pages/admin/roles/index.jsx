@@ -1,9 +1,12 @@
+import { useNavigate } from 'react-router-dom';
+import { Pencil } from 'lucide-react';
 import MainLayout from '../../../components/layout/MainLayout';
 import PageHeader from '../../../components/common/PageHeader';
 import DataTable from '../../../components/common/DataTable';
 import useApiData from '../../../hooks/useApiData.js';
 
 export default function AdminRoleList() {
+  const navigate = useNavigate();
   const columns = [
     { key: 'name', label: 'Role Name', sortable: true },
     { key: 'code', label: 'Code', sortable: true },
@@ -24,6 +27,20 @@ export default function AdminRoleList() {
         </span>
       ),
     },
+    {
+      key: 'actions',
+      label: '',
+      sortable: false,
+      render: (_, row) => (
+        <button
+          onClick={(e) => { e.stopPropagation(); navigate(`/admin/roles/${row.id}`); }}
+          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
+          title="Edit"
+        >
+          <Pencil size={15} />
+        </button>
+      ),
+    },
   ];
 
   const { data, isLoading, error } = useApiData('/api/rbac/roles/');
@@ -38,8 +55,10 @@ export default function AdminRoleList() {
       {isLoading && <div className="text-center py-8 text-slate-500">Loading...</div>}
       {error && <div className="text-center py-8 text-red-500">Failed to load data</div>}
       <DataTable
+        exportFileName="admin-roles"
         columns={columns}
         data={data}
+        onRowClick={(row) => navigate(`/admin/roles/${row.id}`)}
       />
     </MainLayout>
   );

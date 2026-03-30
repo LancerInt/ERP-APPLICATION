@@ -599,10 +599,10 @@ class QuoteLine(BaseModel):
 
     def get_line_total(self):
         """Calculate line total with discount and GST."""
-        base = self.quantity_offered * self.unit_price
-        discounted = base - (base * self.discount / 100)
-        with_gst = discounted + (discounted * self.gst / 100)
-        freight = self.freight_charge or Decimal('0.00')
+        base = Decimal(str(self.quantity_offered)) * Decimal(str(self.unit_price))
+        discounted = base - (base * Decimal(str(self.discount or 0)) / 100)
+        with_gst = discounted + (discounted * Decimal(str(self.gst or 0)) / 100)
+        freight = Decimal(str(self.freight_charge or 0))
         return with_gst + freight
 
 
@@ -806,6 +806,13 @@ class PurchaseOrder(BaseModel):
         default='',
         help_text="e.g., FOB, CIF, DDP"
     )
+    transporter = models.ForeignKey(
+        'master.Transporter',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='purchase_orders'
+    )
     payment_terms = models.CharField(
         max_length=100,
         blank=True,
@@ -869,10 +876,15 @@ class PurchaseOrder(BaseModel):
         )['total'] or Decimal('0.00')
 
     def get_total_received(self):
-        """Get total quantity received."""
-        return self.receipt_lines.aggregate(
-            total=models.Sum('quantity_received')
-        )['total'] or Decimal('0.00')
+        """Get total quantity received across all PO lines."""
+        from django.db.models import Sum
+        total = Decimal('0.00')
+        for po_line in self.po_lines.all():
+            received = po_line.receipt_lines.aggregate(
+                total=Sum('quantity_received')
+            )['total'] or Decimal('0.00')
+            total += received
+        return total
 
     def is_fully_received(self):
         """Check if PO is fully received."""
@@ -1095,6 +1107,7 @@ class ReceiptAdvice(BaseModel):
     remarks = models.TextField(blank=True, default='')
     linked_pos = models.ManyToManyField(
         PurchaseOrder,
+        blank=True,
         related_name='receipt_advices'
     )
 
@@ -1112,9 +1125,20 @@ class ReceiptAdvice(BaseModel):
 
     def save(self, *args, **kwargs):
         if not self.receipt_advice_no:
-            self.receipt_advice_no = generate_document_number(
-                'GRN', 'purchase', 'receipt_advice_no'
-            )
+            from datetime import datetime
+            year = datetime.now().year
+            prefix = f"GRN-{year}-"
+            last = ReceiptAdvice.objects.filter(
+                receipt_advice_no__startswith=prefix
+            ).order_by('-receipt_advice_no').first()
+            if last:
+                try:
+                    num = int(last.receipt_advice_no.split('-')[-1]) + 1
+                except (ValueError, IndexError):
+                    num = 1
+            else:
+                num = 1
+            self.receipt_advice_no = f"{prefix}{num:05d}"
         super().save(*args, **kwargs)
 
     def get_total_received(self):
@@ -1135,7 +1159,9 @@ class ReceiptLine(BaseModel):
     line_no = models.PositiveIntegerField()
     po_line = models.ForeignKey(
         POLine,
-        on_delete=models.PROTECT,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name='receipt_lines'
     )
     product = models.ForeignKey(
@@ -1187,6 +1213,8 @@ class ReceiptLine(BaseModel):
     godown_location = models.ForeignKey(
         'core.Godown',
         on_delete=models.PROTECT,
+        null=True,
+        blank=True,
         related_name='received_items'
     )
     remarks = models.TextField(blank=True, default='')
@@ -1268,17 +1296,18 @@ class FreightDetail(BaseModel):
         choices=FREIGHT_TYPE_CHOICES
     )
     transporter = models.ForeignKey(
-        'master.Vendor',
+        'master.Transporter',
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name='freight_details',
-        help_text="Transporter vendor"
+        help_text="Transporter"
     )
     freight_terms = models.CharField(max_length=100, blank=True, default='')
     tentative_charge = models.DecimalField(
         max_digits=18,
         decimal_places=2,
+        default=0,
         validators=[MinValueValidator(Decimal('0.00'))]
     )
     discount = models.DecimalField(
@@ -1369,6 +1398,7 @@ class LoadingUnloadingWage(BaseModel):
     amount = models.DecimalField(
         max_digits=18,
         decimal_places=2,
+        default=0,
         validators=[MinValueValidator(Decimal('0.00'))]
     )
     tds_applicable = models.DecimalField(
@@ -1457,7 +1487,15 @@ class FreightAdviceInbound(BaseModel):
         ('DRAFT', _('Draft')),
         ('PENDING_APPROVAL', _('Pending Approval')),
         ('APPROVED', _('Approved')),
+        ('IN_TRANSIT', _('In Transit')),
+        ('COMPLETED', _('Completed')),
         ('PAID', _('Paid')),
+        ('CANCELLED', _('Cancelled')),
+    )
+
+    FREIGHT_TERMS_CHOICES = (
+        ('PAID', _('Paid')),
+        ('TO_PAY', _('To Pay')),
     )
 
     advice_no = models.CharField(
@@ -1477,8 +1515,10 @@ class FreightAdviceInbound(BaseModel):
         related_name='freight_advices'
     )
     transporter = models.ForeignKey(
-        'master.Vendor',
+        'master.Transporter',
         on_delete=models.PROTECT,
+        null=True,
+        blank=True,
         related_name='freight_advices_inbound'
     )
     freight_type = models.CharField(
@@ -1487,7 +1527,9 @@ class FreightAdviceInbound(BaseModel):
     )
     created_by = models.ForeignKey(
         'core.StakeholderUser',
-        on_delete=models.PROTECT
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
     )
     created_date = models.DateTimeField(auto_now_add=True, db_index=True)
     base_amount = models.DecimalField(
@@ -1536,6 +1578,30 @@ class FreightAdviceInbound(BaseModel):
         default='DRAFT',
         db_index=True
     )
+    lorry_no = models.CharField(max_length=50, blank=True, default='')
+    driver_name = models.CharField(max_length=100, blank=True, default='')
+    driver_contact = models.CharField(max_length=20, blank=True, default='')
+    dispatch_date = models.DateField(null=True, blank=True)
+    expected_arrival_date = models.DateField(null=True, blank=True)
+    actual_arrival_date = models.DateField(null=True, blank=True)
+    other_charges = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    freight_terms = models.CharField(
+        max_length=20,
+        choices=FREIGHT_TERMS_CHOICES,
+        blank=True,
+        default=''
+    )
+    transport_document_no = models.CharField(max_length=100, blank=True, default='')
+    delivery_remarks = models.TextField(blank=True, default='')
+    remarks = models.TextField(blank=True, default='')
+    approved_by = models.ForeignKey(
+        'core.StakeholderUser',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='approved_freight_advices'
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['-created_date']
@@ -1551,13 +1617,18 @@ class FreightAdviceInbound(BaseModel):
 
     def save(self, *args, **kwargs):
         if not self.advice_no:
-            self.advice_no = generate_document_number('FA', 'purchase', 'advice_no')
+            from datetime import datetime
+            year = datetime.now().year
+            prefix = f"FA-{year}-"
+            last = FreightAdviceInbound.objects.filter(advice_no__startswith=prefix).order_by('-advice_no').first()
+            num = int(last.advice_no.split('-')[-1]) + 1 if last else 1
+            self.advice_no = f"{prefix}{num:05d}"
         super().save(*args, **kwargs)
 
     def get_total_payable(self):
         """Calculate total payable amount."""
         freight = self.base_amount - (self.base_amount * self.discount / 100)
-        return freight + self.loading_wages_amount + self.unloading_wages_amount
+        return freight + self.loading_wages_amount + self.unloading_wages_amount + self.other_charges
 
 
 class VendorPaymentAdvice(BaseModel):
@@ -1576,12 +1647,15 @@ class VendorPaymentAdvice(BaseModel):
         ('CASH', _('Cash')),
         ('CHEQUE', _('Cheque')),
         ('UPI', _('UPI')),
+        ('NEFT', _('NEFT')),
+        ('RTGS', _('RTGS')),
     )
 
     PAYMENT_STATUS_CHOICES = (
         ('DRAFT', _('Draft')),
         ('PENDING', _('Pending')),
         ('APPROVED', _('Approved')),
+        ('PARTIALLY_PAID', _('Partially Paid')),
         ('PAID', _('Paid')),
         ('ON_HOLD', _('On Hold')),
     )
@@ -1597,28 +1671,99 @@ class VendorPaymentAdvice(BaseModel):
         on_delete=models.PROTECT,
         related_name='payment_advices'
     )
+    receipt_advice = models.ForeignKey(
+        'purchase.ReceiptAdvice',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='payment_advices',
+        help_text="Linked receipt advice / GRN"
+    )
     source_document_type = models.CharField(
         max_length=20,
-        choices=SOURCE_DOCUMENT_CHOICES
+        choices=SOURCE_DOCUMENT_CHOICES,
+        blank=True,
+        default=''
     )
     source_document_id = models.UUIDField(
         db_index=True,
+        null=True,
+        blank=True,
         help_text="ID of source document (PO, Receipt, etc.)"
+    )
+    invoice_no = models.CharField(
+        max_length=100,
+        blank=True,
+        default='',
+        help_text="Vendor bill / invoice number"
+    )
+    invoice_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Vendor invoice date"
     )
     amount = models.DecimalField(
         max_digits=18,
         decimal_places=2,
-        validators=[MinValueValidator(Decimal('0.00'))]
+        validators=[MinValueValidator(Decimal('0.00'))],
+        help_text="Total invoice amount"
     )
-    due_date = models.DateField(db_index=True)
+    tds_amount = models.DecimalField(
+        max_digits=18,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        validators=[MinValueValidator(Decimal('0.00'))],
+        help_text="TDS deduction amount"
+    )
+    other_deductions = models.DecimalField(
+        max_digits=18,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        validators=[MinValueValidator(Decimal('0.00'))],
+        help_text="Other deductions"
+    )
+    paid_amount = models.DecimalField(
+        max_digits=18,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        validators=[MinValueValidator(Decimal('0.00'))],
+        help_text="Amount paid so far"
+    )
+    due_date = models.DateField(db_index=True, null=True, blank=True)
     payment_method = models.CharField(
         max_length=20,
         choices=PAYMENT_METHOD_CHOICES,
-        default='BANK_TRANSFER'
+        default='BANK_TRANSFER',
+        blank=True
+    )
+    payment_reference = models.CharField(
+        max_length=200,
+        blank=True,
+        default='',
+        help_text="Payment reference / UTR number"
+    )
+    payment_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Date of payment"
+    )
+    bank_name = models.CharField(
+        max_length=200,
+        blank=True,
+        default='',
+        help_text="Bank name for payment"
+    )
+    transaction_id = models.CharField(
+        max_length=200,
+        blank=True,
+        default='',
+        help_text="Bank transaction ID"
     )
     prepared_by = models.ForeignKey(
         'core.StakeholderUser',
-        on_delete=models.PROTECT
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True
     )
     status = models.CharField(
         max_length=20,
@@ -1643,11 +1788,26 @@ class VendorPaymentAdvice(BaseModel):
 
     def save(self, *args, **kwargs):
         if not self.advice_no:
-            self.advice_no = generate_document_number('VPA', 'purchase', 'advice_no')
+            from datetime import datetime
+            year = datetime.now().year
+            prefix = f"VPA-{year}-"
+            last = VendorPaymentAdvice.objects.filter(advice_no__startswith=prefix).order_by('-advice_no').first()
+            num = int(last.advice_no.split('-')[-1]) + 1 if last else 1
+            self.advice_no = f"{prefix}{num:05d}"
         super().save(*args, **kwargs)
 
+    @property
+    def net_payable(self):
+        """Calculate net payable: amount - TDS - other deductions."""
+        return self.amount - self.tds_amount - self.other_deductions
+
+    @property
+    def balance_amount(self):
+        """Calculate balance: net_payable - paid_amount."""
+        return self.net_payable - self.paid_amount
+
     def get_net_payable(self):
-        """Calculate net payable with taxes."""
+        """Calculate net payable with taxes (legacy)."""
         tax_total = self.tax_components.aggregate(
             total=models.Sum('amount')
         )['total'] or Decimal('0.00')
@@ -1689,6 +1849,247 @@ class PaymentTaxComponent(BaseModel):
         unique_together = [['advice', 'tax_type']]
         verbose_name = _('Payment Tax Component')
         verbose_name_plural = _('Payment Tax Components')
+
+
+# ──────────────────────────────────────────────────────────────
+#  Zoho-style Purchase: Vendor Bills, Payments Made, Vendor Credits
+# ──────────────────────────────────────────────────────────────
+
+class VendorBill(BaseModel):
+    """Vendor invoice/bill received against a PO/Receipt."""
+
+    BILL_STATUS_CHOICES = (
+        ('DRAFT', _('Draft')),
+        ('OPEN', _('Open')),
+        ('PARTIALLY_PAID', _('Partially Paid')),
+        ('PAID', _('Paid')),
+        ('OVERDUE', _('Overdue')),
+        ('CANCELLED', _('Cancelled')),
+    )
+
+    bill_no = models.CharField(max_length=50, unique=True, db_index=True, editable=False)
+    vendor = models.ForeignKey(
+        'master.Vendor', on_delete=models.PROTECT, related_name='bills'
+    )
+    vendor_invoice_no = models.CharField(
+        max_length=100, blank=True, default='',
+        help_text="Vendor's own invoice number"
+    )
+    bill_date = models.DateField(db_index=True)
+    due_date = models.DateField(null=True, blank=True, db_index=True)
+    purchase_order = models.ForeignKey(
+        'purchase.PurchaseOrder', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='vendor_bills'
+    )
+    receipt_advice = models.ForeignKey(
+        'purchase.ReceiptAdvice', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='vendor_bills'
+    )
+
+    # Amounts
+    subtotal = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    discount_amount = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    tax_amount = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    tds_amount = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    shipping_charges = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    adjustment = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    total_amount = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    amount_paid = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+
+    status = models.CharField(max_length=20, choices=BILL_STATUS_CHOICES, default='DRAFT', db_index=True)
+    notes = models.TextField(blank=True, default='')
+    terms_and_conditions = models.TextField(blank=True, default='')
+
+    class Meta:
+        db_table = 'purchase_vendor_bill'
+        ordering = ['-bill_date']
+        indexes = [
+            models.Index(fields=['vendor', 'status']),
+            models.Index(fields=['status', '-bill_date']),
+        ]
+        verbose_name = _('Vendor Bill')
+        verbose_name_plural = _('Vendor Bills')
+
+    def __str__(self):
+        return self.bill_no
+
+    def save(self, *args, **kwargs):
+        if not self.bill_no:
+            from datetime import datetime
+            year = datetime.now().year
+            prefix = f"BILL-{year}-"
+            last = VendorBill.objects.filter(bill_no__startswith=prefix).order_by('-bill_no').first()
+            num = int(last.bill_no.split('-')[-1]) + 1 if last else 1
+            self.bill_no = f"{prefix}{num:05d}"
+        super().save(*args, **kwargs)
+
+    @property
+    def balance_due(self):
+        return self.total_amount - self.amount_paid
+
+
+class VendorBillLine(BaseModel):
+    """Line items in a vendor bill."""
+
+    bill = models.ForeignKey(VendorBill, on_delete=models.CASCADE, related_name='bill_lines')
+    product = models.ForeignKey('master.Product', on_delete=models.PROTECT, related_name='vendor_bill_lines')
+    description = models.TextField(blank=True, default='')
+    quantity = models.DecimalField(max_digits=18, decimal_places=4, default=1)
+    uom = models.CharField(max_length=10, blank=True, default='')
+    rate = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    discount_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    tax_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    amount = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+
+    class Meta:
+        db_table = 'purchase_vendor_bill_line'
+        ordering = ['bill', 'id']
+        verbose_name = _('Vendor Bill Line')
+        verbose_name_plural = _('Vendor Bill Lines')
+
+    def __str__(self):
+        return f"{self.bill.bill_no} - {self.product}"
+
+
+class PaymentMade(BaseModel):
+    """Payment record against vendor bills."""
+
+    PAYMENT_MODE_CHOICES = (
+        ('BANK_TRANSFER', _('Bank Transfer')),
+        ('CASH', _('Cash')),
+        ('CHEQUE', _('Cheque')),
+        ('UPI', _('UPI')),
+        ('NEFT', _('NEFT')),
+        ('RTGS', _('RTGS')),
+    )
+    PAYMENT_STATUS_CHOICES = (
+        ('DRAFT', _('Draft')),
+        ('APPROVED', _('Approved')),
+        ('SENT', _('Sent')),
+        ('CANCELLED', _('Cancelled')),
+    )
+
+    payment_no = models.CharField(max_length=50, unique=True, db_index=True, editable=False)
+    vendor = models.ForeignKey(
+        'master.Vendor', on_delete=models.PROTECT, related_name='payments_made'
+    )
+    payment_date = models.DateField(db_index=True)
+    payment_mode = models.CharField(max_length=20, choices=PAYMENT_MODE_CHOICES, default='BANK_TRANSFER')
+    amount = models.DecimalField(max_digits=18, decimal_places=2)
+    reference_no = models.CharField(max_length=100, blank=True, default='')
+    bank_name = models.CharField(max_length=200, blank=True, default='')
+    bill = models.ForeignKey(
+        VendorBill, on_delete=models.SET_NULL, null=True, blank=True, related_name='payments'
+    )
+    status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default='DRAFT', db_index=True)
+    notes = models.TextField(blank=True, default='')
+
+    class Meta:
+        db_table = 'purchase_payment_made'
+        ordering = ['-payment_date']
+        indexes = [
+            models.Index(fields=['vendor', 'status']),
+            models.Index(fields=['status', '-payment_date']),
+        ]
+        verbose_name = _('Payment Made')
+        verbose_name_plural = _('Payments Made')
+
+    def __str__(self):
+        return self.payment_no
+
+    def save(self, *args, **kwargs):
+        if not self.payment_no:
+            from datetime import datetime
+            year = datetime.now().year
+            prefix = f"PAY-{year}-"
+            last = PaymentMade.objects.filter(payment_no__startswith=prefix).order_by('-payment_no').first()
+            num = int(last.payment_no.split('-')[-1]) + 1 if last else 1
+            self.payment_no = f"{prefix}{num:05d}"
+        super().save(*args, **kwargs)
+
+
+class VendorCredit(BaseModel):
+    """Vendor credit note / debit note."""
+
+    CREDIT_STATUS_CHOICES = (
+        ('DRAFT', _('Draft')),
+        ('OPEN', _('Open')),
+        ('APPLIED', _('Applied')),
+        ('CLOSED', _('Closed')),
+        ('CANCELLED', _('Cancelled')),
+    )
+
+    credit_no = models.CharField(max_length=50, unique=True, db_index=True, editable=False)
+    vendor = models.ForeignKey(
+        'master.Vendor', on_delete=models.PROTECT, related_name='vendor_credits'
+    )
+    credit_date = models.DateField(db_index=True)
+    CREDIT_TYPE_CHOICES = (
+        ('CREDIT', _('Credit Note')),
+        ('DEBIT', _('Debit Note')),
+        ('ADVANCE', _('Advance Payment')),
+    )
+    credit_type = models.CharField(
+        max_length=20,
+        choices=CREDIT_TYPE_CHOICES,
+        default='CREDIT'
+    )
+    reason = models.TextField(blank=True, default='')
+    bill = models.ForeignKey(
+        VendorBill, on_delete=models.SET_NULL, null=True, blank=True, related_name='credits'
+    )
+    subtotal = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    tax_amount = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    total_amount = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    amount_applied = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    status = models.CharField(max_length=20, choices=CREDIT_STATUS_CHOICES, default='DRAFT', db_index=True)
+    notes = models.TextField(blank=True, default='')
+
+    class Meta:
+        db_table = 'purchase_vendor_credit'
+        ordering = ['-credit_date']
+        indexes = [
+            models.Index(fields=['vendor', 'status']),
+            models.Index(fields=['status', '-credit_date']),
+        ]
+        verbose_name = _('Vendor Credit')
+        verbose_name_plural = _('Vendor Credits')
+
+    def __str__(self):
+        return self.credit_no
+
+    def save(self, *args, **kwargs):
+        if not self.credit_no:
+            from datetime import datetime
+            year = datetime.now().year
+            prefix = f"VCR-{year}-"
+            last = VendorCredit.objects.filter(credit_no__startswith=prefix).order_by('-credit_no').first()
+            num = int(last.credit_no.split('-')[-1]) + 1 if last else 1
+            self.credit_no = f"{prefix}{num:05d}"
+        super().save(*args, **kwargs)
+
+    @property
+    def balance(self):
+        return self.total_amount - self.amount_applied
+
+
+class VendorCreditLine(BaseModel):
+    """Line items in a vendor credit note."""
+
+    credit = models.ForeignKey(VendorCredit, on_delete=models.CASCADE, related_name='credit_lines')
+    product = models.ForeignKey('master.Product', on_delete=models.PROTECT, related_name='vendor_credit_lines')
+    description = models.TextField(blank=True, default='')
+    quantity = models.DecimalField(max_digits=18, decimal_places=4, default=1)
+    uom = models.CharField(max_length=10, blank=True, default='')
+    rate = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    tax_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    amount = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+
+    class Meta:
+        db_table = 'purchase_vendor_credit_line'
+        ordering = ['credit', 'id']
+        verbose_name = _('Vendor Credit Line')
+        verbose_name_plural = _('Vendor Credit Lines')
 
     def __str__(self):
         return f"{self.advice.advice_no} - {self.get_tax_type_display()}"

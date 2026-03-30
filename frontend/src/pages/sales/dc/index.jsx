@@ -5,10 +5,13 @@ import PageHeader from '../../../components/common/PageHeader';
 import FilterPanel from '../../../components/common/FilterPanel';
 import DataTable from '../../../components/common/DataTable';
 import StatusBadge from '../../../components/common/StatusBadge';
+import { Pencil } from 'lucide-react';
 import useApiData from '../../../hooks/useApiData.js';
+import usePermissions from '../../../hooks/usePermissions.js';
 
 export default function DispatchChallanList() {
   const navigate = useNavigate();
+  const { canCreate } = usePermissions();
   const { data, isLoading, error, refetch } = useApiData('/api/sales/dc/');
   const [page, setPage] = useState(1);
   const [sortBy, setSortBy] = useState('dispatch_date');
@@ -68,6 +71,21 @@ export default function DispatchChallanList() {
       sortable: true,
       width: '100px',
       render: (value) => value.toLocaleString(),
+    },
+    {
+      field: 'actions',
+      header: '',
+      sortable: false,
+      width: '60px',
+      render: (_, row) => (
+        <button
+          onClick={(e) => { e.stopPropagation(); navigate(`/sales/dc/${row.id}`); }}
+          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
+          title="Edit"
+        >
+          <Pencil size={15} />
+        </button>
+      ),
     },
   ];
 
@@ -145,8 +163,7 @@ export default function DispatchChallanList() {
           actions={{
             onExport: () => console.log('Exporting dispatch challans...'),
             onFilter: () => setShowFilters(!showFilters),
-            createLink: '/sales/dc/new',
-            createLabel: 'New DC',
+            ...(canCreate('Dispatch Challan') ? { createLink: '/sales/dc/new', createLabel: 'New DC' } : {}),
           }}
         />
 
@@ -164,6 +181,7 @@ export default function DispatchChallanList() {
         {error && <div className="text-center py-8 text-red-500">Failed to load data</div>}
         <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
           <DataTable
+            exportFileName="dispatch-challans"
             columns={columns}
             data={filteredData}
             page={page}

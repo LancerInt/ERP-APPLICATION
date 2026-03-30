@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, FileText } from 'lucide-react';
+import { Plus, FileText, Pencil } from 'lucide-react';
 import MainLayout from '../../../components/layout/MainLayout';
 import DataTable from '../../../components/common/DataTable';
 import StatusBadge from '../../../components/common/StatusBadge';
 import useApiData from '../../../hooks/useApiData.js';
+import usePermissions from '../../../hooks/usePermissions.js';
 
 export default function CustomerPOList() {
   const navigate = useNavigate();
+  const { canCreate } = usePermissions();
   const { data, isLoading, error, refetch } = useApiData('/api/sales/customer-po/');
   const [page, setPage] = useState(1);
   const [sortBy, setSortBy] = useState('uploadDate');
@@ -55,6 +57,21 @@ export default function CustomerPOList() {
       width: '120px',
       render: (value) => new Date(value).toLocaleDateString(),
     },
+    {
+      field: 'actions',
+      header: '',
+      sortable: false,
+      width: '60px',
+      render: (_, row) => (
+        <button
+          onClick={(e) => { e.stopPropagation(); navigate(`/sales/customer-po/${row.id}`); }}
+          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
+          title="Edit"
+        >
+          <Pencil size={15} />
+        </button>
+      ),
+    },
   ];
 
   const filterOptions = [
@@ -100,19 +117,22 @@ export default function CustomerPOList() {
             <h1 className="text-3xl font-bold text-slate-900">Customer Purchase Orders</h1>
             <p className="text-slate-600 mt-2">Upload and manage customer POs with AI parsing</p>
           </div>
-          <button
-            onClick={() => navigate('/sales/customer-po/new')}
-            className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-          >
-            <Plus size={20} />
-            Upload PO
-          </button>
+          {canCreate('Customer PO') && (
+            <button
+              onClick={() => navigate('/sales/customer-po/new')}
+              className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+            >
+              <Plus size={20} />
+              Upload PO
+            </button>
+          )}
         </div>
 
         {isLoading && <div className="text-center py-8 text-slate-500">Loading...</div>}
         {error && <div className="text-center py-8 text-red-500">Failed to load data</div>}
         <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
           <DataTable
+            exportFileName="customer-pos"
             columns={columns}
             data={filteredData}
             page={page}

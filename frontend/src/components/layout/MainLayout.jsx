@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Sidebar from './Sidebar';
 import Header from './Header';
 
 export default function MainLayout({ children, breadcrumbs = [] }) {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    return localStorage.getItem('sidebar-collapsed') === 'true';
+  });
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 1024);
@@ -11,13 +14,17 @@ export default function MainLayout({ children, breadcrumbs = [] }) {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  const handleCollapseChange = useCallback((collapsed) => {
+    setSidebarCollapsed(collapsed);
+  }, []);
+
   return (
     <div className="flex h-screen bg-slate-50">
       {/* Sidebar */}
-      <Sidebar />
+      <Sidebar onCollapseChange={handleCollapseChange} />
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Header */}
         <Header />
 

@@ -116,6 +116,12 @@ class RolePermission(models.Model):
     can_create = models.BooleanField(default=False)
     can_edit = models.BooleanField(default=False)
     can_delete = models.BooleanField(default=False)
+    # Action-level permissions
+    can_approve = models.BooleanField(default=False)
+    can_reject = models.BooleanField(default=False)
+    can_send_email = models.BooleanField(default=False)
+    can_export = models.BooleanField(default=False)
+    can_print = models.BooleanField(default=False)
 
     class Meta:
         db_table = 'rbac_role_permission'

@@ -5,10 +5,13 @@ import PageHeader from '../../../components/common/PageHeader';
 import FilterPanel from '../../../components/common/FilterPanel';
 import DataTable from '../../../components/common/DataTable';
 import StatusBadge from '../../../components/common/StatusBadge';
+import { Pencil } from 'lucide-react';
 import useApiData from '../../../hooks/useApiData.js';
+import usePermissions from '../../../hooks/usePermissions.js';
 
 export default function FreightAdviceList() {
   const navigate = useNavigate();
+  const { canCreate } = usePermissions();
   const { data, isLoading, error, refetch } = useApiData('/api/sales/freight/');
   const [page, setPage] = useState(1);
   const [sortBy, setSortBy] = useState('freight_no');
@@ -55,6 +58,21 @@ export default function FreightAdviceList() {
       sortable: true,
       width: '120px',
       render: (value) => <StatusBadge status={value} />,
+    },
+    {
+      field: 'actions',
+      header: '',
+      sortable: false,
+      width: '60px',
+      render: (_, row) => (
+        <button
+          onClick={(e) => { e.stopPropagation(); navigate(`/sales/freight/${row.id}`); }}
+          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
+          title="Edit"
+        >
+          <Pencil size={15} />
+        </button>
+      ),
     },
   ];
 
@@ -125,8 +143,7 @@ export default function FreightAdviceList() {
           actions={{
             onExport: () => console.log('Exporting freight advice...'),
             onFilter: () => setShowFilters(!showFilters),
-            createLink: '/sales/freight/new',
-            createLabel: 'New Freight',
+            ...(canCreate('Freight Advice') ? { createLink: '/sales/freight/new', createLabel: 'New Freight' } : {}),
           }}
         />
 
@@ -144,6 +161,7 @@ export default function FreightAdviceList() {
         {error && <div className="text-center py-8 text-red-500">Failed to load data</div>}
         <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
           <DataTable
+            exportFileName="outbound-freight"
             columns={columns}
             data={filteredData}
             page={page}

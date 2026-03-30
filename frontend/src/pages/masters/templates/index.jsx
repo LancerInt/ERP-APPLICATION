@@ -5,10 +5,13 @@ import PageHeader from '../../../components/common/PageHeader';
 import FilterPanel from '../../../components/common/FilterPanel';
 import DataTable from '../../../components/common/DataTable';
 import StatusBadge from '../../../components/common/StatusBadge';
+import { Pencil } from 'lucide-react';
 import useApiData from '../../../hooks/useApiData.js';
+import usePermissions from '../../../hooks/usePermissions.js';
 
 export default function TemplateLibraryList() {
   const navigate = useNavigate();
+  const { canCreate } = usePermissions();
   const [showFilters, setShowFilters] = useState(false);
   const [filterValues, setFilterValues] = useState({});
 
@@ -49,6 +52,20 @@ export default function TemplateLibraryList() {
       label: 'Status',
       render: (value, row) => <StatusBadge status={row.is_active === undefined ? value : (row.is_active ? 'Active' : 'Inactive')} />,
     },
+    {
+      key: 'actions',
+      label: '',
+      sortable: false,
+      render: (_, row) => (
+        <button
+          onClick={(e) => { e.stopPropagation(); navigate(`/masters/templates/${row.id}`); }}
+          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
+          title="Edit"
+        >
+          <Pencil size={15} />
+        </button>
+      ),
+    },
   ];
 
   const { data, isLoading, error, refetch } = useApiData('/api/templates/');
@@ -75,8 +92,7 @@ export default function TemplateLibraryList() {
         actions={{
           onFilter: () => setShowFilters(!showFilters),
           onExport: () => {},
-          createLink: '/masters/templates/new',
-          createLabel: 'Add Template',
+          ...(canCreate('Template') ? { createLink: '/masters/templates/new', createLabel: 'Add Template' } : {}),
         }}
       />
       {showFilters && (
@@ -91,6 +107,7 @@ export default function TemplateLibraryList() {
       {isLoading && <div className="text-center py-8 text-slate-500">Loading...</div>}
       {error && <div className="text-center py-8 text-red-500">Failed to load data</div>}
       <DataTable
+        exportFileName="templates"
         columns={columns}
         data={filteredData}
         onRowClick={(row) => navigate(`/masters/templates/${row.id}`)}

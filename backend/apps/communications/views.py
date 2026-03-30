@@ -158,6 +158,11 @@ class RFQEmailViewSet(viewsets.ViewSet):
         Send RFQ emails to selected vendors with PDF attachments.
         POST with {rfq_id, template_id, vendor_ids: [...]}
         """
+        # Check send_email permission
+        from rbac.permissions import check_permission
+        if not request.user.is_superuser and not check_permission(request.user, 'RFQ', 'send_email'):
+            return Response({'error': 'You do not have permission to send emails.'}, status=status.HTTP_403_FORBIDDEN)
+
         serializer = SendEmailRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data

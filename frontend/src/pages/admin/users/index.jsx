@@ -126,6 +126,7 @@ export default function AdminUserList() {
       {isLoading && <div className="text-center py-8 text-slate-500">Loading...</div>}
       {error && <div className="text-center py-8 text-red-500">Failed to load data</div>}
       <DataTable
+        exportFileName="admin-users"
         columns={columns}
         data={filteredData}
         onRowClick={(row) => navigate(`/admin/users/${row.id}`)}

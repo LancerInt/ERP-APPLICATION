@@ -5,11 +5,14 @@ import PageHeader from '../../../components/common/PageHeader';
 import FilterPanel from '../../../components/common/FilterPanel';
 import DataTable from '../../../components/common/DataTable';
 import StatusBadge from '../../../components/common/StatusBadge';
+import { Pencil } from 'lucide-react';
 import useApiData from '../../../hooks/useApiData.js';
+import usePermissions from '../../../hooks/usePermissions.js';
 
 export default function FreightAdviceInboundList() {
   const navigate = useNavigate();
   const { data, isLoading, error, refetch } = useApiData('/api/purchase/freight/');
+  const { canCreate, canExport } = usePermissions();
   const [showFilters, setShowFilters] = useState(false);
   const [filterValues, setFilterValues] = useState({});
 
@@ -21,9 +24,13 @@ export default function FreightAdviceInboundList() {
       label: 'Status',
       type: 'select',
       options: [
-        { value: 'Draft', label: 'Draft' },
-        { value: 'Approved', label: 'Approved' },
+        { value: 'DRAFT', label: 'Draft' },
+        { value: 'PENDING_APPROVAL', label: 'Pending Approval' },
+        { value: 'APPROVED', label: 'Approved' },
+        { value: 'IN_TRANSIT', label: 'In Transit' },
+        { value: 'COMPLETED', label: 'Completed' },
         { value: 'PAID', label: 'Paid' },
+        { value: 'CANCELLED', label: 'Cancelled' },
       ],
     },
     {
@@ -35,42 +42,75 @@ export default function FreightAdviceInboundList() {
         { value: 'Linehaul', label: 'Linehaul' },
       ],
     },
+    {
+      key: 'freight_terms',
+      label: 'Freight Terms',
+      type: 'select',
+      options: [
+        { value: 'PAID', label: 'Paid' },
+        { value: 'TO_PAY', label: 'To Pay' },
+      ],
+    },
   ];
 
   const columns = [
-    { key: 'freight_no', label: 'Freight No', sortable: true },
-    { key: 'receipt_advice', label: 'Receipt Advice', sortable: true },
-    { key: 'transporter', label: 'Transporter', sortable: true },
+    { key: 'advice_no', label: 'Freight No', sortable: true },
+    { key: 'receipt_advice_no', label: 'Receipt Advice', sortable: true },
+    { key: 'transporter_name', label: 'Transporter', sortable: true },
     { key: 'freight_type', label: 'Freight Type', sortable: true },
     {
-      key: 'total_amount',
-      label: 'Total Amount',
+      key: 'freight_terms_display',
+      label: 'Terms',
       sortable: true,
-      render: (value) => value ? `₹${Number(value).toLocaleString()}` : '-',
+      render: (value) => value || '-',
     },
     {
-      key: 'status',
+      key: 'total_freight_cost',
+      label: 'Total Amount',
+      sortable: true,
+      render: (value) => value ? `\u20B9${Number(value).toLocaleString('en-IN')}` : '-',
+    },
+    {
+      key: 'status_display',
       label: 'Status',
-      render: (value) => <StatusBadge status={value} />,
+      render: (value, row) => <StatusBadge status={value || row.status} />,
+    },
+    {
+      key: 'actions',
+      label: '',
+      sortable: false,
+      render: (_, row) => (
+        <button
+          onClick={(e) => { e.stopPropagation(); navigate(`/purchase/freight/${row.id}`); }}
+          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
+          title="Edit"
+        >
+          <Pencil size={15} />
+        </button>
+      ),
     },
   ];
 
   const filteredData = (data || []).filter((row) => {
     if (filterValues.search) {
       const search = filterValues.search.toLowerCase();
-      const matchesSearch = Object.values(row).some((v) =>
-        String(v).toLowerCase().includes(search)
-      );
+      const matchesSearch = [
+        row.advice_no, row.receipt_advice_no, row.transporter_name,
+        row.freight_type, row.status_display, row.vendor_name,
+      ].some((v) => String(v || '').toLowerCase().includes(search));
       if (!matchesSearch) return false;
     }
     if (filterValues.transporter) {
       const transporterSearch = filterValues.transporter.toLowerCase();
-      if (!row.transporter.toLowerCase().includes(transporterSearch)) return false;
+      if (!String(row.transporter_name || '').toLowerCase().includes(transporterSearch)) return false;
     }
     if (filterValues.status && row.status !== filterValues.status) {
       return false;
     }
     if (filterValues.freight_type && row.freight_type !== filterValues.freight_type) {
+      return false;
+    }
+    if (filterValues.freight_terms && row.freight_terms !== filterValues.freight_terms) {
       return false;
     }
     return true;
@@ -82,15 +122,13 @@ export default function FreightAdviceInboundList() {
         title="Freight Advice (Inbound)"
         subtitle="Manage inbound freight and transportation charges"
         breadcrumbs={[
-          { label: 'Masters', href: '/masters' },
           { label: 'Purchase', href: '/purchase' },
           { label: 'Freight Advice (Inbound)' },
         ]}
         actions={{
           onFilter: () => setShowFilters(!showFilters),
-          onExport: () => {},
-          createLink: '/purchase/freight/new',
-          createLabel: 'New Freight Advice',
+          onExport: canExport('Freight Advice') ? () => {} : undefined,
+          ...(canCreate('Freight Advice') ? { createLink: '/purchase/freight/new', createLabel: 'New Freight Advice' } : {}),
         }}
       />
       {showFilters && (
@@ -105,6 +143,7 @@ export default function FreightAdviceInboundList() {
       {isLoading && <div className="text-center py-8 text-slate-500">Loading...</div>}
       {error && <div className="text-center py-8 text-red-500">Failed to load data</div>}
       <DataTable
+        exportFileName="freight-advices"
         columns={columns}
         data={filteredData}
         onRowClick={(row) => navigate(`/purchase/freight/${row.id}`)}

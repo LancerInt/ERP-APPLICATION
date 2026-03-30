@@ -5,9 +5,12 @@ import PageHeader from '../../../components/common/PageHeader';
 import FilterPanel from '../../../components/common/FilterPanel';
 import DataTable from '../../../components/common/DataTable';
 import StatusBadge from '../../../components/common/StatusBadge';
+import { Pencil } from 'lucide-react';
 import useApiData from '../../../hooks/useApiData.js';
+import usePermissions from '../../../hooks/usePermissions.js';
 
 export default function BankStatementList() {
+  const { canCreate } = usePermissions();
   const { data, isLoading, error } = useApiData('/api/finance/bank-statements/');
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
@@ -55,6 +58,21 @@ export default function BankStatementList() {
       sortable: true,
       width: '120px',
       render: (value) => <StatusBadge status={value} />,
+    },
+    {
+      field: 'actions',
+      header: '',
+      sortable: false,
+      width: '60px',
+      render: (_, row) => (
+        <button
+          onClick={(e) => { e.stopPropagation(); navigate(`/finance/bank/${row.id}`); }}
+          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
+          title="Edit"
+        >
+          <Pencil size={15} />
+        </button>
+      ),
     },
   ];
 
@@ -113,8 +131,7 @@ export default function BankStatementList() {
           actions={{
             onExport: () => console.log('Exporting bank statements...'),
             onFilter: () => setShowFilters(!showFilters),
-            createLink: '/finance/bank/upload',
-            createLabel: 'Upload Statement',
+            ...(canCreate('Bank Statement') ? { createLink: '/finance/bank/upload', createLabel: 'Upload Statement' } : {}),
           }}
         />
 
@@ -132,6 +149,7 @@ export default function BankStatementList() {
         {error && <div className="text-center py-8 text-red-500">Failed to load data</div>}
         <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
           <DataTable
+            exportFileName="bank-statements"
             columns={columns}
             data={filteredData}
             page={page}

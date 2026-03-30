@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import MainLayout from '../../../components/layout/MainLayout';
 import PageHeader from '../../../components/common/PageHeader';
-import FilterPanel from '../../../components/common/FilterPanel';
+import FilterPanel, { applyAdvancedFilters } from '../../../components/common/FilterPanel';
 import DataTable from '../../../components/common/DataTable';
 import StatusBadge from '../../../components/common/StatusBadge';
 import ActionButtons from '../../../components/common/ActionButtons';
@@ -17,6 +17,8 @@ export default function PurchaseRequestList() {
   const { canCreate } = usePermissions();
   const [showFilters, setShowFilters] = useState(false);
   const [filterValues, setFilterValues] = useState({});
+  const [advancedRules, setAdvancedRules] = useState([]);
+  const [advancedLogic, setAdvancedLogic] = useState('AND');
 
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this purchase request?')) return;
@@ -46,16 +48,22 @@ export default function PurchaseRequestList() {
   ];
 
   const columns = [
-    { key: 'pr_no', label: 'PR Number', sortable: true },
-    { key: 'warehouse_name', label: 'Warehouse', sortable: true },
-    { key: 'priority', label: 'Priority', sortable: true },
-    { key: 'required_by_date', label: 'Required By', sortable: true, render: (value) => value ? new Date(value).toLocaleDateString() : '-' },
+    { key: 'pr_no', label: 'PR Number', sortable: true, filterType: 'text' },
+    { key: 'warehouse_name', label: 'Warehouse', sortable: true, filterType: 'text' },
+    { key: 'priority', label: 'Priority', sortable: true, filterType: 'select', filterOptions: [
+      { value: 'LOW', label: 'Low' }, { value: 'MEDIUM', label: 'Medium' }, { value: 'HIGH', label: 'High' },
+    ]},
+    { key: 'required_by_date', label: 'Required By', sortable: true, filterType: 'date', render: (value) => value ? new Date(value).toLocaleDateString() : '-' },
     {
-      key: 'approval_status', label: 'Status', sortable: true,
+      key: 'approval_status', label: 'Status', sortable: true, filterType: 'select',
+      filterOptions: [
+        { value: 'DRAFT', label: 'Draft' }, { value: 'EDITED', label: 'Edited' },
+        { value: 'PENDING', label: 'Pending' }, { value: 'APPROVED', label: 'Approved' }, { value: 'REJECTED', label: 'Rejected' },
+      ],
       render: (value) => <StatusBadge status={value || 'DRAFT'} />,
     },
-    { key: 'request_date', label: 'Created', sortable: true, render: (value) => value ? new Date(value).toLocaleDateString() : '-' },
-    { key: 'linked_rfq_no', label: 'Linked RFQ', render: (value) => value || '-' },
+    { key: 'request_date', label: 'Created', sortable: true, filterType: 'date', render: (value) => value ? new Date(value).toLocaleDateString() : '-' },
+    { key: 'linked_rfq_no', label: 'Linked RFQ', filterType: 'text', render: (value) => value || '-' },
     {
       key: 'actions', label: 'Actions', sortable: false,
       render: (value, row) => (
@@ -64,7 +72,8 @@ export default function PurchaseRequestList() {
     },
   ];
 
-  const filteredData = (data || []).filter((row) => {
+  // Apply simple filters
+  let filteredData = (data || []).filter((row) => {
     if (filterValues.search) {
       const s = filterValues.search.toLowerCase();
       const match = [row.pr_no, row.warehouse_name, row.priority].some(v => String(v || '').toLowerCase().includes(s));
@@ -75,6 +84,11 @@ export default function PurchaseRequestList() {
     if (filterValues.date_to && row.request_date > filterValues.date_to) return false;
     return true;
   });
+
+  // Apply advanced filters on top
+  if (advancedRules.length > 0) {
+    filteredData = applyAdvancedFilters(filteredData, advancedRules, advancedLogic);
+  }
 
   return (
     <MainLayout>
@@ -93,13 +107,16 @@ export default function PurchaseRequestList() {
           filters={filters}
           values={filterValues}
           onChange={(key, value) => setFilterValues(prev => ({ ...prev, [key]: value }))}
-          onReset={() => setFilterValues({})}
+          onReset={() => { setFilterValues({}); setAdvancedRules([]); }}
           onClose={() => setShowFilters(false)}
+          columns={columns}
+          onAdvancedFilter={(rules, logic) => { setAdvancedRules(rules); setAdvancedLogic(logic); }}
         />
       )}
       {isLoading && <div className="text-center py-8 text-slate-500">Loading...</div>}
       {error && <div className="text-center py-8 text-red-500">Failed to load data</div>}
       <DataTable
+        exportFileName="purchase-requests"
         columns={columns}
         data={filteredData}
         onRowClick={(row) => navigate(`/purchase/requests/${row.id}`)}

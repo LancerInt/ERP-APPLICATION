@@ -106,6 +106,7 @@ class RolePermissionSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'role', 'role_name', 'module', 'module_name', 'module_slug',
             'can_view', 'can_create', 'can_edit', 'can_delete',
+            'can_approve', 'can_reject', 'can_send_email', 'can_export', 'can_print',
         ]
         read_only_fields = ['id']
 
@@ -118,6 +119,7 @@ class RolePermissionWriteSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'role', 'module',
             'can_view', 'can_create', 'can_edit', 'can_delete',
+            'can_approve', 'can_reject', 'can_send_email', 'can_export', 'can_print',
         ]
         read_only_fields = ['id']
 
@@ -158,7 +160,7 @@ class UserWithRoleSerializer(serializers.ModelSerializer):
             'is_active', 'is_staff', 'is_superuser',
             'role', 'staff_name', 'permissions',
         ]
-        read_only_fields = fields
+        read_only_fields = ['id', 'role', 'staff_name', 'permissions']
 
     def get_role(self, obj):
         """Return the user's ERP role from UserRoleAssignment."""
@@ -185,6 +187,11 @@ class UserWithRoleSerializer(serializers.ModelSerializer):
                     'can_create': True,
                     'can_edit': True,
                     'can_delete': True,
+                    'can_approve': True,
+                    'can_reject': True,
+                    'can_send_email': True,
+                    'can_export': True,
+                    'can_print': True,
                 }
                 for m in modules
             ]
@@ -206,6 +213,11 @@ class UserWithRoleSerializer(serializers.ModelSerializer):
                 'can_create': rp.can_create,
                 'can_edit': rp.can_edit,
                 'can_delete': rp.can_delete,
+                'can_approve': rp.can_approve,
+                'can_reject': rp.can_reject,
+                'can_send_email': rp.can_send_email,
+                'can_export': rp.can_export,
+                'can_print': rp.can_print,
             }
             for rp in role_perms
         ]

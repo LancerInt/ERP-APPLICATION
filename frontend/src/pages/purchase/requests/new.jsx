@@ -23,7 +23,7 @@ export default function CreatePurchaseRequest() {
     requestor_role: '',
     requirement_type: 'GOODS',
     priority: 'MEDIUM',
-    required_by_date: '',
+    required_by_date: new Date().toISOString().split('T')[0],
     justification: '',
     notes: '',
   });

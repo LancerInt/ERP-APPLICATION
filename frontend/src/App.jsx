@@ -56,19 +56,34 @@ import QuoteList from './pages/purchase/quotes/index.jsx';
 import EvaluationList from './pages/purchase/evaluations/index.jsx';
 import PurchaseOrders from './pages/purchase/orders/index.jsx';
 import PurchaseOrderDetail from './pages/purchase/orders/[id].jsx';
+import SendPOEmail from './pages/purchase/orders/send-email.jsx';
 import ReceiptList from './pages/purchase/receipts/index.jsx';
 import PurchaseFreight from './pages/purchase/freight/index.jsx';
-import VendorPayments from './pages/purchase/payments/index.jsx';
 // Purchase - Forms
 import PurchaseRequestNew from './pages/purchase/requests/new.jsx';
 import RFQNew from './pages/purchase/rfq/new.jsx';
 import QuoteNew from './pages/purchase/quotes/new.jsx';
 import EvaluationNew from './pages/purchase/evaluations/new.jsx';
+import EvaluationDetail from './pages/purchase/evaluations/[id].jsx';
 import EvaluationDashboard from './pages/purchase/evaluations/dashboard.jsx';
+import PurchaseLifecycleDashboard from './pages/purchase/lifecycle/index.jsx';
+// DocumentExtractor merged into Quote Response page
 import PurchaseOrderNew from './pages/purchase/orders/new.jsx';
 import ReceiptNew from './pages/purchase/receipts/new.jsx';
+import ReceiptDetail from './pages/purchase/receipts/[id].jsx';
 import PurchaseFreightNew from './pages/purchase/freight/new.jsx';
-import VendorPaymentNew from './pages/purchase/payments/new.jsx';
+import PurchaseFreightDetail from './pages/purchase/freight/[id].jsx';
+
+// Purchase - Bills, Payments Made, Vendor Credits
+import VendorBillList from './pages/purchase/bills/index.jsx';
+import VendorBillNew from './pages/purchase/bills/new.jsx';
+import VendorBillDetail from './pages/purchase/bills/[id].jsx';
+import PaymentsMadeList from './pages/purchase/payments-made/index.jsx';
+import PaymentsMadeNew from './pages/purchase/payments-made/new.jsx';
+import PaymentsMadeDetail from './pages/purchase/payments-made/[id].jsx';
+import VendorCreditList from './pages/purchase/vendor-credits/index.jsx';
+import VendorCreditNew from './pages/purchase/vendor-credits/new.jsx';
+import VendorCreditDetail from './pages/purchase/vendor-credits/[id].jsx';
 
 // Sales - List
 import CustomerPO from './pages/sales/customer-po/index.jsx';
@@ -165,8 +180,10 @@ import PayrollNew from './pages/hr/payroll/new.jsx';
 // Admin RBAC
 import AdminUserList from './pages/admin/users/index.jsx';
 import AdminUserNew from './pages/admin/users/new.jsx';
+import AdminUserDetail from './pages/admin/users/[id].jsx';
 import AdminUserEdit from './pages/admin/users/edit.jsx';
 import AdminRoleList from './pages/admin/roles/index.jsx';
+import AdminRoleDetail from './pages/admin/roles/[id].jsx';
 import AdminPermissions from './pages/admin/permissions/index.jsx';
 import AuditLogViewer from './pages/admin/audit-logs/index.jsx';
 
@@ -240,15 +257,33 @@ function App() {
           <Route path="/purchase/evaluations" element={<ProtectedRoute module="Quote Evaluation"><EvaluationList /></ProtectedRoute>} />
           <Route path="/purchase/evaluations/new" element={<ProtectedRoute module="Quote Evaluation" action="create"><EvaluationNew /></ProtectedRoute>} />
           <Route path="/purchase/evaluations/dashboard" element={<ProtectedRoute module="Quote Evaluation"><EvaluationDashboard /></ProtectedRoute>} />
+          <Route path="/purchase/evaluations/:id" element={<ProtectedRoute module="Quote Evaluation"><EvaluationDetail /></ProtectedRoute>} />
+          <Route path="/purchase/lifecycle" element={<ProtectedRoute module="Purchase Request"><PurchaseLifecycleDashboard /></ProtectedRoute>} />
           <Route path="/purchase/orders" element={<ProtectedRoute module="Purchase Order"><PurchaseOrders /></ProtectedRoute>} />
           <Route path="/purchase/orders/new" element={<ProtectedRoute module="Purchase Order" action="create"><PurchaseOrderNew /></ProtectedRoute>} />
           <Route path="/purchase/orders/:id" element={<ProtectedRoute module="Purchase Order"><PurchaseOrderDetail /></ProtectedRoute>} />
+          <Route path="/purchase/orders/:id/send-email" element={<ProtectedRoute module="Purchase Order"><SendPOEmail /></ProtectedRoute>} />
           <Route path="/purchase/receipts" element={<ProtectedRoute module="Receipt Advice"><ReceiptList /></ProtectedRoute>} />
           <Route path="/purchase/receipts/new" element={<ProtectedRoute module="Receipt Advice" action="create"><ReceiptNew /></ProtectedRoute>} />
+          <Route path="/purchase/receipts/:id" element={<ProtectedRoute module="Receipt Advice"><ReceiptDetail /></ProtectedRoute>} />
           <Route path="/purchase/freight" element={<ProtectedRoute module="Freight Advice"><PurchaseFreight /></ProtectedRoute>} />
           <Route path="/purchase/freight/new" element={<ProtectedRoute module="Freight Advice" action="create"><PurchaseFreightNew /></ProtectedRoute>} />
-          <Route path="/purchase/payments" element={<ProtectedRoute module="Vendor Payment"><VendorPayments /></ProtectedRoute>} />
-          <Route path="/purchase/payments/new" element={<ProtectedRoute module="Vendor Payment" action="create"><VendorPaymentNew /></ProtectedRoute>} />
+          <Route path="/purchase/freight/:id" element={<ProtectedRoute module="Freight Advice"><PurchaseFreightDetail /></ProtectedRoute>} />
+
+          {/* Purchase - Bills */}
+          <Route path="/purchase/bills" element={<ProtectedRoute module="Vendor Payment"><VendorBillList /></ProtectedRoute>} />
+          <Route path="/purchase/bills/new" element={<ProtectedRoute module="Vendor Payment" action="create"><VendorBillNew /></ProtectedRoute>} />
+          <Route path="/purchase/bills/:id" element={<ProtectedRoute module="Vendor Payment"><VendorBillDetail /></ProtectedRoute>} />
+
+          {/* Purchase - Payments Made */}
+          <Route path="/purchase/payments-made" element={<ProtectedRoute module="Vendor Payment"><PaymentsMadeList /></ProtectedRoute>} />
+          <Route path="/purchase/payments-made/new" element={<ProtectedRoute module="Vendor Payment" action="create"><PaymentsMadeNew /></ProtectedRoute>} />
+          <Route path="/purchase/payments-made/:id" element={<ProtectedRoute module="Vendor Payment"><PaymentsMadeDetail /></ProtectedRoute>} />
+
+          {/* Purchase - Vendor Credits */}
+          <Route path="/purchase/vendor-credits" element={<ProtectedRoute module="Vendor Payment"><VendorCreditList /></ProtectedRoute>} />
+          <Route path="/purchase/vendor-credits/new" element={<ProtectedRoute module="Vendor Payment" action="create"><VendorCreditNew /></ProtectedRoute>} />
+          <Route path="/purchase/vendor-credits/:id" element={<ProtectedRoute module="Vendor Payment"><VendorCreditDetail /></ProtectedRoute>} />
 
           {/* ========== SALES ========== */}
           <Route path="/sales/customer-po" element={<ProtectedRoute module="Customer PO"><CustomerPO /></ProtectedRoute>} />
@@ -340,8 +375,10 @@ function App() {
           {/* ========== ADMIN RBAC ========== */}
           <Route path="/admin/users" element={<ProtectedRoute adminOnly><AdminUserList /></ProtectedRoute>} />
           <Route path="/admin/users/new" element={<ProtectedRoute adminOnly><AdminUserNew /></ProtectedRoute>} />
+          <Route path="/admin/users/:id" element={<ProtectedRoute adminOnly><AdminUserDetail /></ProtectedRoute>} />
           <Route path="/admin/users/:id/edit" element={<ProtectedRoute adminOnly><AdminUserEdit /></ProtectedRoute>} />
           <Route path="/admin/roles" element={<ProtectedRoute adminOnly><AdminRoleList /></ProtectedRoute>} />
+          <Route path="/admin/roles/:id" element={<ProtectedRoute adminOnly><AdminRoleDetail /></ProtectedRoute>} />
           <Route path="/admin/permissions" element={<ProtectedRoute adminOnly><AdminPermissions /></ProtectedRoute>} />
           <Route path="/admin/audit-logs" element={<ProtectedRoute adminOnly><AuditLogViewer /></ProtectedRoute>} />
           <Route path="/admin/email-templates" element={<ProtectedRoute adminOnly><EmailTemplateList /></ProtectedRoute>} />

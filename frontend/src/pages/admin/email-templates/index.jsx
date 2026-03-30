@@ -7,9 +7,11 @@ import DataTable from '../../../components/common/DataTable';
 import useApiData from '../../../hooks/useApiData.js';
 import apiClient from '../../../utils/api.js';
 import { getApiErrorMessage } from '../../../utils/formHelpers.js';
+import usePermissions from '../../../hooks/usePermissions.js';
 
 export default function EmailTemplateList() {
   const navigate = useNavigate();
+  const { canCreate } = usePermissions();
   const { data, isLoading, error, refetch } = useApiData('/api/communications/templates/');
   const [deleting, setDeleting] = useState(null);
 
@@ -80,13 +82,13 @@ export default function EmailTemplateList() {
           { label: 'Email Templates' },
         ]}
         actions={{
-          createLink: '/admin/email-templates/new',
-          createLabel: 'Create Template',
+          ...(canCreate('Email Template') ? { createLink: '/admin/email-templates/new', createLabel: 'Create Template' } : {}),
         }}
       />
       {isLoading && <div className="text-center py-8 text-slate-500">Loading...</div>}
       {error && <div className="text-center py-8 text-red-500">Failed to load data</div>}
       <DataTable
+        exportFileName="email-templates"
         columns={columns}
         data={data || []}
         onRowClick={(row) => navigate(`/admin/email-templates/${row.id}/edit`)}

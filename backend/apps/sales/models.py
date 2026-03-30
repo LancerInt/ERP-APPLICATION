@@ -172,6 +172,8 @@ class SalesOrder(BaseModel):
     price_list = models.ForeignKey(
         'master.PriceList',
         on_delete=models.PROTECT,
+        null=True,
+        blank=True,
         related_name='sales_orders'
     )
     credit_terms = models.CharField(max_length=100, blank=True, default='')

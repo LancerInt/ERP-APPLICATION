@@ -47,7 +47,8 @@ def get_warehouses_for_user(user):
     Uses proper select_related for optimization.
     """
     if not hasattr(user, 'stakeholder_profile'):
-        return Warehouse.objects.none()
+        # User without stakeholder profile sees all active warehouses (for dropdown lookups)
+        return Warehouse.objects.filter(active_flag=True).select_related('company').order_by('warehouse_code')
 
     stakeholder = user.stakeholder_profile
 

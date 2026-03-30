@@ -10,7 +10,7 @@ from config.views import signup_view
 # ViewSet imports
 from core.views import CompanyViewSet, WarehouseViewSet, GodownViewSet, MachineryViewSet, RoleDefinitionViewSet, StakeholderUserViewSet
 from master.views import ProductViewSet, ServiceCatalogueViewSet, VendorViewSet, CustomerViewSet, TransporterViewSet, PriceListViewSet, TaxMasterViewSet, TemplateLibraryViewSet
-from purchase.views import PurchaseRequestViewSet, RFQHeaderViewSet, QuoteResponseViewSet, QuoteEvaluationViewSet, PurchaseOrderViewSet, ReceiptAdviceViewSet, VendorPaymentAdviceViewSet, FreightAdviceInboundViewSet, QuoteUploadView, EvaluationDashboardView, EvaluationDashboardSubmitView
+from purchase.views import PurchaseRequestViewSet, RFQHeaderViewSet, QuoteResponseViewSet, QuoteEvaluationViewSet, PurchaseOrderViewSet, ReceiptAdviceViewSet, VendorPaymentAdviceViewSet, FreightAdviceInboundViewSet, QuoteUploadView, DocumentExtractorView, EvaluationDashboardView, EvaluationDashboardSubmitView, VendorBillViewSet, PaymentMadeViewSet, VendorCreditViewSet, PurchaseLifecycleGraphView
 from sales.views import CustomerPOUploadViewSet, SalesOrderViewSet, DispatchChallanViewSet, SalesInvoiceCheckViewSet, FreightAdviceOutboundViewSet, ReceivableLedgerViewSet
 from production.views import BOMRequestViewSet, WorkOrderViewSet, WageVoucherViewSet, MaterialIssueViewSet, ProductionYieldLogViewSet
 from quality.views import QCParameterLibraryViewSet, QCRequestViewSet, QCLabJobViewSet, QCFinalReportViewSet, CounterSampleRegisterViewSet
@@ -50,6 +50,9 @@ router.register(r'purchase/orders', PurchaseOrderViewSet, basename='purchase-ord
 router.register(r'purchase/receipts', ReceiptAdviceViewSet, basename='receipt')
 router.register(r'purchase/payments', VendorPaymentAdviceViewSet, basename='vendor-payment')
 router.register(r'purchase/freight', FreightAdviceInboundViewSet, basename='purchase-freight')
+router.register(r'purchase/bills', VendorBillViewSet, basename='vendor-bill')
+router.register(r'purchase/payments-made', PaymentMadeViewSet, basename='payment-made')
+router.register(r'purchase/vendor-credits', VendorCreditViewSet, basename='vendor-credit')
 
 # Sales
 router.register(r'sales/customer-po', CustomerPOUploadViewSet, basename='customer-po')
@@ -136,9 +139,15 @@ urlpatterns = [
     # Quote document upload & parsing (before router so it takes precedence)
     path('api/purchase/quotes/parse-upload/', QuoteUploadView.as_view(), name='quote-parse-upload'),
 
+    # Document Extraction Engine
+    path('api/purchase/extract-document/', DocumentExtractorView.as_view(), name='document-extractor'),
+
     # Quote Evaluation Dashboard
     path('api/purchase/evaluation-dashboard/', EvaluationDashboardView.as_view(), name='evaluation-dashboard'),
     path('api/purchase/evaluation-dashboard/submit/', EvaluationDashboardSubmitView.as_view(), name='evaluation-dashboard-submit'),
+
+    # Purchase Lifecycle Graph
+    path('api/purchase/lifecycle-graph/', PurchaseLifecycleGraphView.as_view(), name='purchase-lifecycle-graph'),
 
     # API Routes (all ViewSets registered above)
     path('api/', include(router.urls)),

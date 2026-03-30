@@ -5,10 +5,13 @@ import PageHeader from '../../../components/common/PageHeader';
 import FilterPanel from '../../../components/common/FilterPanel';
 import DataTable from '../../../components/common/DataTable';
 import StatusBadge from '../../../components/common/StatusBadge';
+import { Pencil } from 'lucide-react';
 import useApiData from '../../../hooks/useApiData.js';
+import usePermissions from '../../../hooks/usePermissions.js';
 
 export default function CounterSampleList() {
   const navigate = useNavigate();
+  const { canCreate } = usePermissions();
   const { data, isLoading, error } = useApiData('/api/quality/counter-samples/');
   const [showFilters, setShowFilters] = useState(false);
   const [filterValues, setFilterValues] = useState({});
@@ -42,6 +45,20 @@ export default function CounterSampleList() {
           <StatusBadge status="Retained" />
         ),
     },
+    {
+      key: 'actions',
+      label: '',
+      sortable: false,
+      render: (_, row) => (
+        <button
+          onClick={(e) => { e.stopPropagation(); navigate(`/quality/counter-samples/${row.id}`); }}
+          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
+          title="Edit"
+        >
+          <Pencil size={15} />
+        </button>
+      ),
+    },
   ];
 
   const filteredData = (data || []).filter((row) => {
@@ -71,8 +88,7 @@ export default function CounterSampleList() {
         actions={{
           onFilter: () => setShowFilters(!showFilters),
           onExport: () => console.log('Exporting counter samples...'),
-          createLink: '/quality/counter-samples/new',
-          createLabel: 'New Counter Sample',
+          ...(canCreate('Counter Sample') ? { createLink: '/quality/counter-samples/new', createLabel: 'New Counter Sample' } : {}),
         }}
       />
       {showFilters && (
@@ -87,6 +103,7 @@ export default function CounterSampleList() {
       {isLoading && <div className="text-center py-8 text-slate-500">Loading...</div>}
       {error && <div className="text-center py-8 text-red-500">Failed to load data</div>}
       <DataTable
+        exportFileName="counter-samples"
         columns={columns}
         data={filteredData}
         onRowClick={(row) => navigate(`/quality/counter-samples/${row.id}`)}

@@ -11,10 +11,11 @@ import {
   ArrowLeft,
   FileText,
   Link as LinkIcon,
+  Trash2,
 } from 'lucide-react';
 import MainLayout from '../../../components/layout/MainLayout';
 import StatusBadge from '../../../components/common/StatusBadge';
-import SubformTable from '../../../components/common/SubformTable';
+import { Plus } from 'lucide-react';
 import apiClient from '../../../utils/api.js';
 import usePermissions from '../../../hooks/usePermissions.js';
 import useLookup from '../../../hooks/useLookup.js';
@@ -24,7 +25,26 @@ export default function PurchaseRequestDetailPage() {
   const navigate = useNavigate();
   const { canEdit, canDelete } = usePermissions();
   const { options: warehouseOptions, raw: warehouseRaw } = useLookup('/api/warehouses/');
-  const { options: productOptions } = useLookup('/api/products/');
+  const { options: productOptions, raw: productRaw } = useLookup('/api/products/');
+
+  const GOODS_SUB_TYPE_CHOICES = [
+    { value: 'RAW_MATERIAL', label: 'Raw Material' },
+    { value: 'PACKING_MATERIAL', label: 'Packing Material' },
+    { value: 'FINISHED_GOOD', label: 'Finished Good' },
+    { value: 'SEMI_FINISHED', label: 'Semi Finished' },
+    { value: 'TRADED_PRODUCTS', label: 'Traded Products' },
+    { value: 'CAPITAL_GOOD', label: 'Capital Good' },
+    { value: 'MACHINE_SPARES', label: 'Machine Spares' },
+    { value: 'CONSUMABLES', label: 'Consumables' },
+  ];
+
+  // Get filtered product options based on selected category
+  const getFilteredProducts = (category) => {
+    if (!category) return productOptions;
+    return productRaw
+      .filter(p => p.goods_sub_type === category)
+      .map(p => ({ value: p.id, label: p.product_name || p.sku_code || p.id }));
+  };
 
   const [pr, setPr] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -33,6 +53,7 @@ export default function PurchaseRequestDetailPage() {
   const [isApproving, setIsApproving] = useState(false);
   const [isRejecting, setIsRejecting] = useState(false);
   const [editData, setEditData] = useState({});
+  const [editLines, setEditLines] = useState([]);
 
   // Fetch PR data
   useEffect(() => {
@@ -45,6 +66,7 @@ export default function PurchaseRequestDetailPage() {
       const res = await apiClient.get(`/api/purchase/requests/${id}/`);
       setPr(res.data);
       setEditData(res.data);
+      setEditLines((res.data.lines || res.data.line_items || []).map(l => ({ ...l })));
     } catch (err) {
       toast.error('Failed to load purchase request');
     } finally {
@@ -61,28 +83,49 @@ export default function PurchaseRequestDetailPage() {
   const isPendingApproval = approvalStatus === 'PENDING_APPROVAL';
 
   // Permission checks
-  const canEditPR = !isApproved && !isRejected && canEdit('Purchase Request');
-  const canApprovePR = (isEdited || isPendingApproval) && canEdit('Purchase Request') && !isApproved;
-  const canRejectPR = !isApproved && !isRejected && canEdit('Purchase Request');
+  const { canApprove: canApproveModule, canReject: canRejectModule } = usePermissions();
+  const canEditPR = canEdit('Purchase Request');  // Allow edit for any status (save will handle restrictions)
+  const canApprovePR = (isEdited || isPendingApproval) && canApproveModule('Purchase Request') && !isApproved;
+  const canRejectPR = !isApproved && !isRejected && canRejectModule('Purchase Request');
+
+  const handleDelete = async () => {
+    if (!window.confirm('Are you sure you want to delete this purchase request? This action cannot be undone.')) return;
+    try {
+      await apiClient.delete(`/api/purchase/requests/${id}/`);
+      toast.success('Purchase request deleted successfully');
+      navigate('/purchase/requests');
+    } catch (err) {
+      toast.error(err.response?.data?.detail || err.response?.data?.error || 'Failed to delete');
+    }
+  };
+
+  // Pre-fill _category from product's goods_sub_type for existing lines
+  const initLines = (lines) => {
+    return (lines || []).map(l => {
+      const prod = productRaw.find(p => p.id === l.product_service);
+      return { ...l, _category: prod?.goods_sub_type || '' };
+    });
+  };
 
   // Handle edit toggle
   const handleEdit = () => {
     if (!canEditPR) return;
     setIsEditing(true);
     setEditData({ ...pr });
+    setEditLines(initLines(pr.lines || pr.line_items || []));
   };
 
   // Handle cancel edit
   const handleCancelEdit = () => {
     setIsEditing(false);
     setEditData({ ...pr });
+    setEditLines(initLines(pr.lines || pr.line_items || []));
   };
 
-  // Handle save (changes status to EDITED)
+  // Handle save (changes status to EDITED) - includes line items
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      // Only send editable fields, not the entire PR object
       const payload = {
         warehouse: editData.warehouse,
         godown: editData.godown || null,
@@ -92,8 +135,19 @@ export default function PurchaseRequestDetailPage() {
         notes: editData.notes || '',
         requirement_type: editData.requirement_type,
         requestor_role: editData.requestor_role || '',
+        lines: editLines.filter(l => l.product_service).map((l, i) => {
+          const linePayload = {
+            line_no: l.line_no || i + 1,
+            product_service: l.product_service,
+            quantity_requested: l.quantity_requested,
+            uom: l.uom || 'KG',
+            description_override: l.description_override || '',
+            purpose: l.purpose || '',
+          };
+          if (l.id && !l._isNew) linePayload.id = l.id;
+          return linePayload;
+        }),
       };
-      // Remove null/empty to avoid validation issues
       Object.keys(payload).forEach(k => {
         if (payload[k] === null || payload[k] === undefined) delete payload[k];
       });
@@ -101,6 +155,7 @@ export default function PurchaseRequestDetailPage() {
       const res = await apiClient.post(`/api/purchase/requests/${id}/edit/`, payload);
       setPr(res.data);
       setEditData(res.data);
+      setEditLines((res.data.lines || res.data.line_items || []).map(l => ({ ...l })));
       setIsEditing(false);
       toast.success('Purchase Request saved. You can now approve it.');
     } catch (err) {
@@ -151,49 +206,17 @@ export default function PurchaseRequestDetailPage() {
     setEditData(prev => ({ ...prev, [name]: value }));
   };
 
-  // State for add-line form
-  const [showAddLine, setShowAddLine] = useState(false);
-  const [newLine, setNewLine] = useState({ product_service: '', quantity_requested: 1, uom: 'KG', description_override: '', purpose: '' });
-
-  // Handle add line item
-  const handleAddLine = async () => {
-    if (!newLine.product_service) { toast.error('Select a product'); return; }
-    try {
-      await apiClient.post(`/api/purchase/requests/${id}/add-line/`, newLine);
-      toast.success('Line item added');
-      setNewLine({ product_service: '', quantity_requested: 1, uom: 'KG', description_override: '', purpose: '' });
-      setShowAddLine(false);
-      fetchPR();
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to add line item');
-    }
+  // Local line item handlers (changes stay in state until Save)
+  const handleEditLineChange = (index, field, value) => {
+    setEditLines(prev => prev.map((line, i) => i === index ? { ...line, [field]: value } : line));
   };
-
-  // Handle remove line item
-  const handleRemoveLine = async (lineId) => {
-    if (!window.confirm('Remove this line item?')) return;
-    try {
-      await apiClient.delete(`/api/purchase/requests/${id}/remove-line/${lineId}/`);
-      toast.success('Line item removed');
-      fetchPR();
-    } catch (err) {
-      toast.error('Failed to remove line item');
-    }
+  const handleAddEditLine = () => {
+    const nextLineNo = editLines.length > 0 ? Math.max(...editLines.map(l => l.line_no || 0)) + 1 : 1;
+    setEditLines(prev => [...prev, { _isNew: true, line_no: nextLineNo, _category: '', product_service: '', quantity_requested: '', uom: 'KG', description_override: '', purpose: '' }]);
   };
-
-  // Handle inline line item update
-  const handleLineFieldChange = async (lineId, field, value) => {
-    try {
-      await apiClient.patch(`/api/purchase/requests/${id}/update-line/${lineId}/`, { [field]: value });
-      fetchPR();
-    } catch (err) {
-      toast.error('Failed to update line item');
-    }
+  const handleRemoveEditLine = (index) => {
+    setEditLines(prev => prev.filter((_, i) => i !== index));
   };
-
-  // Local state for inline editing lines
-  const [editingLine, setEditingLine] = useState(null);
-  const [editLineData, setEditLineData] = useState({});
 
   // Format date for display
   const formatDate = (dateStr) => {
@@ -224,58 +247,7 @@ export default function PurchaseRequestDetailPage() {
     return wh?.name || warehouseId;
   };
 
-  // Line item table columns matching API fields
-  const tableColumns = [
-    {
-      field: 'line_no',
-      header: '#',
-      width: '50px',
-    },
-    {
-      field: 'product_name',
-      header: 'Product',
-      width: '200px',
-      render: (value, row) => value || row.product_code || '-',
-    },
-    {
-      field: 'description_override',
-      header: 'Description',
-      width: '200px',
-      editable: isEditing,
-      type: 'text',
-      render: (value) => value || '-',
-    },
-    {
-      field: 'quantity_requested',
-      header: 'Qty Requested',
-      width: '120px',
-      editable: isEditing,
-      type: 'number',
-    },
-    {
-      field: 'approved_quantity',
-      header: 'Qty Approved',
-      width: '120px',
-      render: (value) => value != null ? value : '-',
-    },
-    {
-      field: 'uom',
-      header: 'UOM',
-      width: '80px',
-    },
-    {
-      field: 'purpose',
-      header: 'Purpose',
-      width: '120px',
-      render: (value) => value || '-',
-    },
-    {
-      field: 'status',
-      header: 'Status',
-      width: '100px',
-      render: (value) => value || 'PENDING',
-    },
-  ];
+  // (line item columns are rendered inline in the table below)
 
   // Loading state
   if (isLoading) {
@@ -350,13 +322,22 @@ export default function PurchaseRequestDetailPage() {
           <div className="flex items-center gap-3 flex-wrap ml-8 sm:ml-0">
             {/* Edit button */}
             {!isEditing && canEditPR && (
-              <button
-                onClick={handleEdit}
-                className="flex items-center gap-2 px-4 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 transition text-sm font-medium"
-              >
-                <Edit3 size={16} />
-                Edit
-              </button>
+              <>
+                <button
+                  onClick={handleEdit}
+                  className="flex items-center gap-2 px-4 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 transition text-sm font-medium"
+                >
+                  <Edit3 size={16} />
+                  Edit
+                </button>
+                <button
+                  onClick={handleDelete}
+                  className="flex items-center gap-2 px-4 py-2 border border-red-300 rounded-lg text-red-600 hover:bg-red-50 transition text-sm font-medium"
+                >
+                  <Trash2 size={16} />
+                  Delete
+                </button>
+              </>
             )}
 
             {/* Save / Cancel buttons (only when editing) */}
@@ -382,7 +363,7 @@ export default function PurchaseRequestDetailPage() {
             )}
 
             {/* Approve button */}
-            {!isEditing && canEdit('Purchase Request') && !isApproved && !isRejected && (
+            {!isEditing && canApproveModule('Purchase Request') && !isApproved && !isRejected && (
               <div className="relative group">
                 <button
                   onClick={handleApprove}
@@ -566,126 +547,98 @@ export default function PurchaseRequestDetailPage() {
             {/* Line Items */}
             <div className="bg-white rounded-lg border border-slate-200 p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold text-slate-900">Line Items ({lineItems.length})</h2>
-                {canEditPR && !isApproved && (
-                  <button type="button" onClick={() => setShowAddLine(!showAddLine)} className="flex items-center gap-1 px-3 py-1.5 text-sm text-primary-600 border border-primary-300 rounded-lg hover:bg-primary-50">
+                <h2 className="text-xl font-semibold text-slate-900">Line Items ({(isEditing ? editLines : lineItems).length})</h2>
+                {isEditing && (
+                  <button type="button" onClick={handleAddEditLine} className="flex items-center gap-1 px-3 py-1.5 text-sm text-primary-600 border border-primary-300 rounded-lg hover:bg-primary-50">
                     + Add Item
                   </button>
                 )}
               </div>
 
-              {/* Add Line Form */}
-              {showAddLine && canEditPR && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                  <h4 className="text-sm font-semibold text-blue-800 mb-3">Add New Line Item</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-                    <div>
-                      <label className="block text-xs text-slate-600 mb-1">Product *</label>
-                      <select value={newLine.product_service} onChange={e => setNewLine(p => ({ ...p, product_service: e.target.value }))} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm">
-                        <option value="">Select...</option>
-                        {productOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-600 mb-1">Quantity *</label>
-                      <input type="number" min="0.01" step="any" value={newLine.quantity_requested} onChange={e => setNewLine(p => ({ ...p, quantity_requested: e.target.value }))} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-600 mb-1">UOM</label>
-                      <select value={newLine.uom} onChange={e => setNewLine(p => ({ ...p, uom: e.target.value }))} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm">
-                        <option value="KG">KG</option><option value="LTR">Litres</option><option value="PCS">Pcs</option><option value="MTR">Meters</option><option value="BOX">Box</option><option value="PACK">Pack</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-600 mb-1">Description</label>
-                      <input type="text" value={newLine.description_override} onChange={e => setNewLine(p => ({ ...p, description_override: e.target.value }))} placeholder="Optional" className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
-                    </div>
-                    <div className="flex items-end gap-2">
-                      <button type="button" onClick={handleAddLine} className="px-3 py-1.5 bg-primary-600 text-white rounded text-sm hover:bg-primary-700">Save</button>
-                      <button type="button" onClick={() => setShowAddLine(false)} className="px-3 py-1.5 border border-slate-300 rounded text-sm hover:bg-slate-50">Cancel</button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {lineItems.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-slate-50 border-b">
-                        <th className="text-left px-3 py-2 font-medium text-slate-600 w-10">#</th>
-                        <th className="text-left px-3 py-2 font-medium text-slate-600">Product</th>
-                        <th className="text-left px-3 py-2 font-medium text-slate-600">Description</th>
-                        <th className="text-left px-3 py-2 font-medium text-slate-600 w-28">Qty</th>
-                        <th className="text-left px-3 py-2 font-medium text-slate-600 w-20">UOM</th>
-                        <th className="text-left px-3 py-2 font-medium text-slate-600 w-24">Purpose</th>
-                        <th className="text-left px-3 py-2 font-medium text-slate-600 w-24">Status</th>
-                        {canEditPR && !isApproved && <th className="text-center px-3 py-2 font-medium text-slate-600 w-16">Del</th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {lineItems.map((line, idx) => {
-                        const isLineEditing = editingLine === line.id;
-                        return (
-                          <tr key={line.id || idx} className="border-b border-slate-100 hover:bg-slate-50">
+              {(() => {
+                const displayLines = isEditing ? editLines : lineItems;
+                return displayLines.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-slate-50 border-b">
+                          <th className="text-left px-3 py-2 font-medium text-slate-600 w-10">#</th>
+                          {isEditing && <th className="text-left px-3 py-2 font-medium text-slate-600">Category</th>}
+                          <th className="text-left px-3 py-2 font-medium text-slate-600">Product {isEditing && <span className="text-red-500">*</span>}</th>
+                          <th className="text-left px-3 py-2 font-medium text-slate-600">Description</th>
+                          <th className="text-left px-3 py-2 font-medium text-slate-600 w-28">Qty {isEditing && <span className="text-red-500">*</span>}</th>
+                          <th className="text-left px-3 py-2 font-medium text-slate-600 w-20">UOM</th>
+                          <th className="text-left px-3 py-2 font-medium text-slate-600 w-24">Purpose</th>
+                          {isEditing && <th className="text-center px-3 py-2 font-medium text-slate-600 w-16"></th>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {displayLines.map((line, idx) => (
+                          <tr key={line.id || `new-${idx}`} className="border-b border-slate-100 hover:bg-slate-50">
                             <td className="px-3 py-2 text-slate-500">{line.line_no || idx + 1}</td>
-                            <td className="px-3 py-2 font-medium">
-                              {line.product_name || line.product_code || '-'}
+                            {isEditing && (
+                              <td className="px-3 py-2">
+                                <select
+                                  value={line._category || ''}
+                                  onChange={e => {
+                                    handleEditLineChange(idx, '_category', e.target.value);
+                                    handleEditLineChange(idx, 'product_service', '');
+                                  }}
+                                  className="w-full px-2 py-1 border border-slate-300 rounded text-sm"
+                                  style={{ minWidth: '140px' }}
+                                >
+                                  <option value="">All Categories</option>
+                                  {GOODS_SUB_TYPE_CHOICES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                                </select>
+                              </td>
+                            )}
+                            <td className="px-3 py-2">
+                              {isEditing ? (
+                                <select value={line.product_service || ''} onChange={e => handleEditLineChange(idx, 'product_service', e.target.value)} className="w-full px-2 py-1 border border-slate-300 rounded text-sm" style={{ minWidth: '160px' }}>
+                                  <option value="">{line._category ? 'Select Product' : 'Select Category first'}</option>
+                                  {getFilteredProducts(line._category).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                </select>
+                              ) : (<span className="font-medium">{line.product_name || line.product_code || '-'}</span>)}
                             </td>
                             <td className="px-3 py-2">
-                              {isLineEditing ? (
-                                <input type="text" value={editLineData.description_override ?? ''} onChange={e => setEditLineData(p => ({ ...p, description_override: e.target.value }))} className="w-full px-2 py-1 border border-blue-400 rounded text-sm" />
+                              {isEditing ? (
+                                <input type="text" value={line.description_override || ''} onChange={e => handleEditLineChange(idx, 'description_override', e.target.value)} className="w-full px-2 py-1 border border-slate-300 rounded text-sm" />
                               ) : (line.description_override || '-')}
                             </td>
                             <td className="px-3 py-2">
-                              {isLineEditing ? (
-                                <input type="number" min="0.01" step="any" value={editLineData.quantity_requested ?? ''} onChange={e => setEditLineData(p => ({ ...p, quantity_requested: e.target.value }))} className="w-20 px-2 py-1 border border-blue-400 rounded text-sm" />
+                              {isEditing ? (
+                                <input type="number" min="0.01" step="any" value={line.quantity_requested || ''} onChange={e => handleEditLineChange(idx, 'quantity_requested', e.target.value)} className="w-24 px-2 py-1 border border-slate-300 rounded text-sm" />
                               ) : line.quantity_requested}
                             </td>
                             <td className="px-3 py-2">
-                              {isLineEditing ? (
-                                <select value={editLineData.uom ?? 'KG'} onChange={e => setEditLineData(p => ({ ...p, uom: e.target.value }))} className="px-2 py-1 border border-blue-400 rounded text-sm">
+                              {isEditing ? (
+                                <select value={line.uom || 'KG'} onChange={e => handleEditLineChange(idx, 'uom', e.target.value)} className="px-2 py-1 border border-slate-300 rounded text-sm">
                                   <option value="KG">KG</option><option value="LTR">Litres</option><option value="PCS">Pcs</option><option value="MTR">Meters</option><option value="BOX">Box</option><option value="PACK">Pack</option>
                                 </select>
                               ) : (line.uom || '-')}
                             </td>
-                            <td className="px-3 py-2">{line.purpose || '-'}</td>
-                            <td className="px-3 py-2"><StatusBadge status={line.status || 'PENDING'} /></td>
-                            {canEditPR && !isApproved && (
+                            <td className="px-3 py-2">
+                              {isEditing ? (
+                                <input type="text" value={line.purpose || ''} onChange={e => handleEditLineChange(idx, 'purpose', e.target.value)} className="w-full px-2 py-1 border border-slate-300 rounded text-sm" />
+                              ) : (line.purpose || '-')}
+                            </td>
+                            {isEditing && (
                               <td className="px-3 py-2 text-center">
-                                <div className="flex items-center gap-1 justify-center">
-                                  {isLineEditing ? (
-                                    <>
-                                      <button onClick={async () => {
-                                        await handleLineFieldChange(line.id, 'quantity_requested', editLineData.quantity_requested);
-                                        if (editLineData.uom !== line.uom) await handleLineFieldChange(line.id, 'uom', editLineData.uom);
-                                        if (editLineData.description_override !== line.description_override) await handleLineFieldChange(line.id, 'description_override', editLineData.description_override);
-                                        setEditingLine(null);
-                                        toast.success('Line updated');
-                                      }} className="p-1 text-green-600 hover:bg-green-50 rounded text-xs" title="Save">✓</button>
-                                      <button onClick={() => setEditingLine(null)} className="p-1 text-slate-500 hover:bg-slate-100 rounded text-xs" title="Cancel">✕</button>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <button onClick={() => { setEditingLine(line.id); setEditLineData({ quantity_requested: line.quantity_requested, uom: line.uom, description_override: line.description_override || '' }); }} className="p-1 text-blue-600 hover:bg-blue-50 rounded" title="Edit">✎</button>
-                                      <button onClick={() => handleRemoveLine(line.id)} className="p-1 text-red-500 hover:bg-red-50 rounded" title="Remove">✕</button>
-                                    </>
-                                  )}
-                                </div>
+                                <button onClick={() => handleRemoveEditLine(idx)} className="p-1 text-red-500 hover:bg-red-50 rounded" title="Remove"><Trash2 size={14} /></button>
                               </td>
                             )}
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="text-center py-8 text-slate-400">
-                  <p>No line items yet.</p>
-                  {canEditPR && <p className="text-sm mt-1">Click "Add Item" to add products to this request.</p>}
-                </div>
-              )}
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-slate-400">
+                    <p>No line items yet.</p>
+                    {isEditing && <p className="text-sm mt-1">Click "+ Add Item" to add products to this request.</p>}
+                  </div>
+                );
+              })()}
             </div>
           </div>
 

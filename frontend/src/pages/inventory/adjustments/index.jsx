@@ -5,9 +5,12 @@ import PageHeader from '../../../components/common/PageHeader';
 import FilterPanel from '../../../components/common/FilterPanel';
 import DataTable from '../../../components/common/DataTable';
 import StatusBadge from '../../../components/common/StatusBadge';
+import { Pencil } from 'lucide-react';
 import useApiData from '../../../hooks/useApiData.js';
+import usePermissions from '../../../hooks/usePermissions.js';
 
 export default function StockAdjustmentList() {
+  const { canCreate } = usePermissions();
   const { data, isLoading, error } = useApiData('/api/inventory/adjustments/');
   const navigate = useNavigate();
   const [showFilters, setShowFilters] = useState(false);
@@ -64,6 +67,20 @@ export default function StockAdjustmentList() {
       label: 'Approval Status',
       render: (value) => <StatusBadge status={value} />,
     },
+    {
+      key: 'actions',
+      label: '',
+      sortable: false,
+      render: (_, row) => (
+        <button
+          onClick={(e) => { e.stopPropagation(); navigate(`/inventory/adjustments/${row.id}`); }}
+          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
+          title="Edit"
+        >
+          <Pencil size={15} />
+        </button>
+      ),
+    },
   ];
 
   const filteredData = (data || []).filter((row) => {
@@ -101,8 +118,7 @@ export default function StockAdjustmentList() {
         actions={{
           onFilter: () => setShowFilters(!showFilters),
           onExport: () => {},
-          createLink: '/inventory/adjustments/new',
-          createLabel: 'New Adjustment',
+          ...(canCreate('Stock Adjustment') ? { createLink: '/inventory/adjustments/new', createLabel: 'New Adjustment' } : {}),
         }}
       />
       {showFilters && (
@@ -117,6 +133,7 @@ export default function StockAdjustmentList() {
       {isLoading && <div className="text-center py-8 text-slate-500">Loading...</div>}
       {error && <div className="text-center py-8 text-red-500">Failed to load data</div>}
       <DataTable
+        exportFileName="stock-adjustments"
         columns={columns}
         data={filteredData}
         onRowClick={(row) => navigate(`/inventory/adjustments/${row.id}`)}

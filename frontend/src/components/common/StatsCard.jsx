@@ -9,9 +9,16 @@ export default function StatsCard({
   onClick = null,
   isLoading = false,
 }) {
+  const handleClick = (e) => {
+    // Don't navigate if user is selecting text
+    const selection = window.getSelection();
+    if (selection && selection.toString().length > 0) return;
+    if (onClick) onClick(e);
+  };
+
   return (
     <div
-      onClick={onClick}
+      onClick={handleClick}
       className={`bg-white rounded-lg border border-slate-200 p-6 ${
         onClick ? 'cursor-pointer hover:shadow-lg hover:border-slate-300 transition' : ''
       }`}

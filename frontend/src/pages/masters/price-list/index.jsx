@@ -5,10 +5,13 @@ import PageHeader from '../../../components/common/PageHeader';
 import FilterPanel from '../../../components/common/FilterPanel';
 import DataTable from '../../../components/common/DataTable';
 import StatusBadge from '../../../components/common/StatusBadge';
+import { Pencil } from 'lucide-react';
 import useApiData from '../../../hooks/useApiData.js';
+import usePermissions from '../../../hooks/usePermissions.js';
 
 export default function PriceListPage() {
   const navigate = useNavigate();
+  const { canCreate } = usePermissions();
   const [showFilters, setShowFilters] = useState(false);
   const [filterValues, setFilterValues] = useState({});
 
@@ -39,8 +42,8 @@ export default function PriceListPage() {
 
   const columns = [
     { key: 'price_list_id', label: 'Price List ID', sortable: true },
-    { key: 'company', label: 'Company', sortable: true },
-    { key: 'customer', label: 'Customer', sortable: true },
+    { key: 'company_name', label: 'Company', sortable: true, render: (v, row) => v || row.company_name || '-' },
+    { key: 'customer_name', label: 'Customer', sortable: true, render: (v, row) => v || row.customer_name || '-' },
     { key: 'currency', label: 'Currency', sortable: true },
     { key: 'effective_from', label: 'Effective From', sortable: true },
     { key: 'effective_to', label: 'Effective To', sortable: true },
@@ -48,6 +51,20 @@ export default function PriceListPage() {
       key: 'status',
       label: 'Status',
       render: (value, row) => <StatusBadge status={row.is_active === undefined ? value : (row.is_active ? 'Active' : 'Inactive')} />,
+    },
+    {
+      key: 'actions',
+      label: '',
+      sortable: false,
+      render: (_, row) => (
+        <button
+          onClick={(e) => { e.stopPropagation(); navigate(`/masters/price-list/${row.id}`); }}
+          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
+          title="Edit"
+        >
+          <Pencil size={15} />
+        </button>
+      ),
     },
   ];
 
@@ -61,11 +78,11 @@ export default function PriceListPage() {
       );
       if (!matchesSearch) return false;
     }
-    if (filterValues.company && row.company !== filterValues.company) return false;
+    if (filterValues.company && row.company_name !== filterValues.company) return false;
     if (filterValues.status && row.status !== filterValues.status) return false;
     if (filterValues.customer) {
       const customerSearch = filterValues.customer.toLowerCase();
-      if (!row.customer.toLowerCase().includes(customerSearch)) return false;
+      if (!(row.customer_name || '').toLowerCase().includes(customerSearch)) return false;
     }
     return true;
   });
@@ -79,8 +96,7 @@ export default function PriceListPage() {
         actions={{
           onFilter: () => setShowFilters(!showFilters),
           onExport: () => {},
-          createLink: '/masters/price-list/new',
-          createLabel: 'Add Price List',
+          ...(canCreate('Price List') ? { createLink: '/masters/price-list/new', createLabel: 'Add Price List' } : {}),
         }}
       />
       {showFilters && (
@@ -95,6 +111,7 @@ export default function PriceListPage() {
       {isLoading && <div className="text-center py-8 text-slate-500">Loading...</div>}
       {error && <div className="text-center py-8 text-red-500">Failed to load data</div>}
       <DataTable
+        exportFileName="price-lists"
         columns={columns}
         data={filteredData}
         onRowClick={(row) => navigate(`/masters/price-list/${row.id}`)}
