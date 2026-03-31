@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, SkipForward } from 'lucide-react';
 import MainLayout from '../../../components/layout/MainLayout';
 import PageHeader from '../../../components/common/PageHeader';
 import apiClient from '../../../utils/api.js';
@@ -15,8 +15,8 @@ export default function CreatePurchaseRequest() {
   const [selectedCompany, setSelectedCompany] = useState('');
   const { options: companyOptions } = useLookup('/api/companies/');
   const { options: productOptions, raw: productList } = useLookup('/api/products/');
-
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [allowRfqSkip, setAllowRfqSkip] = useState(false);
   const [formData, setFormData] = useState({
     warehouse: '',
     godown: '',
@@ -79,20 +79,21 @@ export default function CreatePurchaseRequest() {
         required_by_date: formData.required_by_date || null,
         justification: formData.justification || '',
         notes: formData.notes || '',
+        allow_rfq_skip: allowRfqSkip,
       };
 
-      // Clean nulls
       Object.keys(payload).forEach(k => {
         if (payload[k] === null || payload[k] === '') delete payload[k];
       });
 
-      if (import.meta.env.DEV) console.log('[CreatePR] payload:', payload);
-
+      // 1. Create PR
       const res = await apiClient.post('/api/purchase/requests/', payload);
       const prId = res.data.id;
+      const prNo = res.data.pr_no || '';
 
-      // Add line items to the created PR
+      // 2. Add line items to PR
       const validLines = lineItems.filter(l => l.product);
+      let linesAdded = 0;
       for (const line of validLines) {
         try {
           await apiClient.post(`/api/purchase/requests/${prId}/add-line/`, {
@@ -101,12 +102,17 @@ export default function CreatePurchaseRequest() {
             uom: line.uom || 'KG',
             description_override: line.description || '',
           });
+          linesAdded++;
         } catch (lineErr) {
           console.error('Failed to add line item:', lineErr.response?.data);
+          toast.error(`Failed to add line item: ${lineErr.response?.data?.error || 'Unknown error'}`);
         }
       }
+      if (validLines.length > 0 && linesAdded === 0) {
+        toast.error('No line items were added. Please check product selections.');
+      }
 
-      toast.success(`Purchase Request ${res.data.pr_no || ''} created with ${validLines.length} line items!`);
+      toast.success(`Purchase Request ${prNo} created with ${validLines.length} line items!${allowRfqSkip ? ' Use "Allow RFQ Skip" to approve and create PO.' : ''}`);
       navigate(`/purchase/requests/${prId}`);
     } catch (error) {
       if (import.meta.env.DEV) console.error('[CreatePR] error:', error.response?.data);
@@ -130,6 +136,37 @@ export default function CreatePurchaseRequest() {
           { label: 'New' },
         ]}
       />
+
+      {/* Allow RFQ Skip Toggle */}
+      <div
+        onClick={() => setAllowRfqSkip(prev => !prev)}
+        className={`mb-4 flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+          allowRfqSkip
+            ? 'bg-amber-50 border-amber-300 shadow-sm'
+            : 'bg-white border-slate-200 hover:border-slate-300'
+        }`}
+      >
+        <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors ${
+          allowRfqSkip ? 'bg-amber-500' : 'bg-slate-200'
+        }`}>
+          <SkipForward size={20} className={allowRfqSkip ? 'text-white' : 'text-slate-500'} />
+        </div>
+        <div className="flex-1">
+          <p className={`text-sm font-semibold ${allowRfqSkip ? 'text-amber-800' : 'text-slate-700'}`}>
+            Allow RFQ Skip
+          </p>
+          <p className={`text-xs ${allowRfqSkip ? 'text-amber-600' : 'text-slate-400'}`}>
+            {allowRfqSkip
+              ? 'RFQ will be skipped. PR will be auto-approved and a Purchase Order will be created directly.'
+              : 'Enable to bypass the RFQ process and create a PO directly from this PR.'}
+          </p>
+        </div>
+        <div className={`w-11 h-6 rounded-full flex items-center px-0.5 transition-colors ${
+          allowRfqSkip ? 'bg-amber-500 justify-end' : 'bg-slate-300 justify-start'
+        }`}>
+          <div className="w-5 h-5 bg-white rounded-full shadow" />
+        </div>
+      </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Request Details */}
@@ -261,8 +298,10 @@ export default function CreatePurchaseRequest() {
         {/* Actions */}
         <div className="flex justify-end gap-3">
           <button type="button" onClick={() => navigate(-1)} className="px-6 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
-          <button type="submit" disabled={isSubmitting} className="px-6 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
-            {isSubmitting ? 'Creating...' : 'Create Purchase Request'}
+          <button type="submit" disabled={isSubmitting} className={`px-6 py-2 text-white rounded-lg text-sm font-medium disabled:opacity-50 ${
+            allowRfqSkip ? 'bg-amber-600 hover:bg-amber-700' : 'bg-primary-600 hover:bg-primary-700'
+          }`}>
+            {isSubmitting ? 'Creating...' : allowRfqSkip ? 'Create PR & PO (Skip RFQ)' : 'Create Purchase Request'}
           </button>
         </div>
       </form>

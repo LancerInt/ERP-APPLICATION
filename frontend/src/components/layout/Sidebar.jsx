@@ -34,7 +34,6 @@ const SIDEBAR_SECTIONS = [
       { name: 'RFQ', path: '/purchase/rfq', module: 'RFQ', icon: Send },
       { name: 'Quotes', path: '/purchase/quotes', module: 'Quote', icon: MessageSquare },
       { name: 'Evaluations', path: '/purchase/evaluations', module: 'Quote Evaluation', icon: ClipboardCheck },
-      { name: 'Quote Evaluation', path: '/purchase/evaluations/dashboard', module: 'Quote Evaluation', icon: BarChart3 },
       { name: 'Flow Dashboard', path: '/purchase/lifecycle', module: 'Purchase Request', icon: GitBranch },
       { name: 'Orders (PO)', path: '/purchase/orders', module: 'Purchase Order', icon: ShoppingCart },
       { name: 'Receipts', path: '/purchase/receipts', module: 'Receipt Advice', icon: Package },

@@ -193,8 +193,8 @@ class PurchaseRequestViewSet(viewsets.ModelViewSet):
         """Approve PR and auto-create RFQ."""
         pr = self.get_object()
 
-        # Validate state - must be EDITED or PENDING_APPROVAL
-        if pr.approval_status not in ('EDITED', 'PENDING_APPROVAL', 'PENDING'):
+        # Validate state - must be DRAFT, EDITED or PENDING_APPROVAL
+        if pr.approval_status not in ('DRAFT', 'EDITED', 'PENDING_APPROVAL', 'PENDING'):
             return Response(
                 {'error': 'Only edited or pending requests can be approved'},
                 status=status.HTTP_400_BAD_REQUEST
@@ -235,7 +235,50 @@ class PurchaseRequestViewSet(viewsets.ModelViewSet):
             except Exception:
                 pass  # Line-level approval is optional
 
-            # Auto-create RFQ from approved PR
+            # If allow_rfq_skip, create PO directly instead of RFQ
+            if pr.allow_rfq_skip:
+                company = pr.warehouse.company if pr.warehouse and hasattr(pr.warehouse, 'company') else None
+                if company:
+                    po = PurchaseOrder(
+                        company=company,
+                        warehouse=pr.warehouse,
+                        currency='INR',
+                        status='DRAFT',
+                        terms_and_conditions=pr.notes or '',
+                    )
+                    po.save()
+                    po.linked_prs.add(pr)
+
+                    # Create PO lines from PR lines
+                    for idx, pr_line in enumerate(pr.lines.all().select_related('product_service'), start=1):
+                        POLine.objects.create(
+                            po=po,
+                            line_no=idx,
+                            product_service=pr_line.product_service,
+                            description=pr_line.description_override or '',
+                            quantity_ordered=pr_line.quantity_requested,
+                            uom=pr_line.uom or 'KG',
+                            unit_price=0,
+                            delivery_schedule=pr_line.required_date or pr.required_by_date,
+                            linked_pr_line=pr_line,
+                        )
+
+                    AuditLog.objects.create(
+                        user=request.user,
+                        role_name=get_user_role_name(request.user),
+                        module_name='Purchase Order',
+                        action='CREATE',
+                        details=f'PR {pr.pr_no} approved. PO {po.po_no} created (RFQ Skipped).'
+                    )
+
+                    return Response({
+                        'message': f'PR {pr.pr_no} approved. PO {po.po_no} created (RFQ Skipped)',
+                        'po_no': po.po_no,
+                        'po_id': str(po.id),
+                        'purchase_request': self.get_serializer(pr).data,
+                    })
+
+            # Normal flow: Auto-create RFQ from approved PR
             rfq = self._create_rfq_from_pr(pr, request.user)
 
             # Link RFQ to PR
@@ -254,8 +297,8 @@ class PurchaseRequestViewSet(viewsets.ModelViewSet):
 
         return Response({
             'message': f'Purchase Request {pr.pr_no} approved successfully',
-            'rfq_no': rfq.rfq_no,
-            'rfq_id': str(rfq.id),
+            'rfq_no': rfq.rfq_no if rfq else None,
+            'rfq_id': str(rfq.id) if rfq else None,
             'purchase_request': self.get_serializer(pr).data,
         })
 
@@ -340,6 +383,156 @@ class PurchaseRequestViewSet(viewsets.ModelViewSet):
             rfq.linked_prs.add(pr)
 
         return rfq
+
+    @action(detail=True, methods=['get'], url_path='skip-rfq-po-data')
+    def skip_rfq_po_data(self, request, pk=None):
+        """Return PR data formatted for direct PO creation (skip RFQ flow)."""
+        pr = self.get_object()
+
+        if pr.approval_status != 'APPROVED':
+            return Response(
+                {'error': 'Only approved PRs can skip RFQ to create PO'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check if PO already exists for this PR via skip-RFQ
+        existing_skip_pos = PurchaseOrder.objects.filter(
+            linked_prs=pr,
+            linked_rfq__isnull=True
+        )
+        if existing_skip_pos.exists():
+            return Response(
+                {'error': f'A skip-RFQ PO already exists for this PR: {existing_skip_pos.first().po_no}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Get warehouse company
+        company_id = str(pr.warehouse.company_id) if pr.warehouse and hasattr(pr.warehouse, 'company_id') and pr.warehouse.company_id else ''
+        company_name = ''
+        if company_id:
+            try:
+                company_name = pr.warehouse.company.legal_name
+            except Exception:
+                pass
+
+        # Build line items from PR lines
+        lines = []
+        for line in pr.lines.all().select_related('product_service'):
+            lines.append({
+                'product': str(line.product_service_id) if line.product_service_id else '',
+                'product_name': line.product_service.product_name if line.product_service else '',
+                'product_code': line.product_service.sku_code if line.product_service else '',
+                'description': line.description_override or '',
+                'quantity': str(line.quantity_requested),
+                'uom': line.uom or 'KG',
+                'required_date': str(line.required_date) if line.required_date else '',
+                'pr_line_id': str(line.id),
+            })
+
+        data = {
+            'pr_id': str(pr.id),
+            'pr_no': pr.pr_no,
+            'warehouse': str(pr.warehouse_id) if pr.warehouse_id else '',
+            'warehouse_name': pr.warehouse.name if pr.warehouse else '',
+            'company': company_id,
+            'company_name': company_name,
+            'currency': 'INR',
+            'notes': pr.notes or '',
+            'required_by_date': str(pr.required_by_date) if pr.required_by_date else '',
+            'lines': lines,
+        }
+
+        return Response(data)
+
+    @action(detail=True, methods=['post'], url_path='skip-rfq-create-po')
+    def skip_rfq_create_po(self, request, pk=None):
+        """Approve PR (if needed) and create PO directly, skipping RFQ."""
+        pr = self.get_object()
+
+        with transaction.atomic():
+            # 1. Approve if not already approved
+            if pr.approval_status != 'APPROVED':
+                if pr.approval_status in ('REJECTED', 'CANCELLED'):
+                    return Response(
+                        {'error': 'Cannot skip RFQ on rejected/cancelled PR'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                pr.approval_status = 'APPROVED'
+                pr.approved_by = request.user
+                pr.approved_at = timezone.now()
+                pr.save(update_fields=['approval_status', 'approved_by', 'approved_at'])
+
+                # Approve lines
+                try:
+                    stakeholder = getattr(request.user, 'stakeholder_user', None)
+                    if stakeholder:
+                        PurchaseRequestService.approve_purchase_request(pr, stakeholder)
+                except Exception:
+                    pass
+
+            # 2. Prevent duplicate PO
+            existing_skip_pos = PurchaseOrder.objects.filter(
+                linked_prs=pr,
+                linked_rfq__isnull=True
+            )
+            if existing_skip_pos.exists():
+                return Response(
+                    {'error': f'A skip-RFQ PO already exists: {existing_skip_pos.first().po_no}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 3. Get company from warehouse
+            company = pr.warehouse.company if pr.warehouse and hasattr(pr.warehouse, 'company') else None
+            if not company:
+                return Response(
+                    {'error': 'Cannot determine company from warehouse'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 4. Create PO
+            po = PurchaseOrder(
+                company=company,
+                warehouse=pr.warehouse,
+                currency='INR',
+                status='DRAFT',
+                terms_and_conditions=pr.notes or '',
+            )
+            po.save()
+
+            # 5. Link PR to PO
+            po.linked_prs.add(pr)
+
+            # 6. Create PO lines from PR lines
+            for idx, pr_line in enumerate(pr.lines.all().select_related('product_service'), start=1):
+                POLine.objects.create(
+                    po=po,
+                    line_no=idx,
+                    product_service=pr_line.product_service,
+                    description=pr_line.description_override or '',
+                    quantity_ordered=pr_line.quantity_requested,
+                    uom=pr_line.uom or 'KG',
+                    unit_price=0,
+                    delivery_schedule=pr_line.required_date or pr.required_by_date,
+                    linked_pr_line=pr_line,
+                )
+
+            # 7. Audit log
+            AuditLog.objects.create(
+                user=request.user,
+                role_name=get_user_role_name(request.user),
+                module_name='Purchase Order',
+                action='CREATE',
+                details=f'PO {po.po_no} created via RFQ Skip from PR {pr.pr_no}'
+            )
+
+        # Return PO data
+        po_serializer = PurchaseOrderSerializer(po)
+        return Response({
+            'message': f'PO {po.po_no} created from PR {pr.pr_no} (RFQ Skipped)',
+            'po': po_serializer.data,
+            'po_id': str(po.id),
+            'po_no': po.po_no,
+        }, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['get'])
     def summary(self, request):
@@ -544,7 +737,7 @@ class QuoteEvaluationViewSet(viewsets.ModelViewSet):
 class PurchaseOrderViewSet(viewsets.ModelViewSet):
     """ViewSet for Purchase Orders."""
 
-    queryset = PurchaseOrder.objects.all()
+    queryset = PurchaseOrder.objects.filter(is_active=True)
     serializer_class = PurchaseOrderSerializer
     permission_classes = [IsAuthenticated, HasModulePermission]
     module_name = 'Purchase Order'
@@ -613,6 +806,37 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(po)
         return Response(serializer.data)
 
+    @action(detail=True, methods=['post'], url_path='add-line')
+    def add_line(self, request, pk=None):
+        """Add a line item to this PO."""
+        po = self.get_object()
+        data = request.data
+        product_id = data.get('product_service') or data.get('product')
+        if not product_id:
+            return Response({'error': 'product_service is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from master.models import Product
+        try:
+            product = Product.objects.get(pk=product_id)
+        except Product.DoesNotExist:
+            return Response({'error': 'Product not found'}, status=status.HTTP_400_BAD_REQUEST)
+
+        line_no = data.get('line_no', po.po_lines.count() + 1)
+        line = POLine.objects.create(
+            po=po,
+            line_no=line_no,
+            product_service=product,
+            description=data.get('description', ''),
+            quantity_ordered=data.get('quantity_ordered', data.get('quantity', 1)),
+            uom=data.get('uom', product.uom or 'KG'),
+            unit_price=data.get('unit_price', 0),
+            gst=data.get('gst', 0),
+            delivery_schedule=data.get('delivery_schedule') or None,
+            linked_pr_line_id=data.get('linked_pr_line') or None,
+        )
+        from .serializers import POLineSerializer
+        return Response(POLineSerializer(line).data, status=status.HTTP_201_CREATED)
+
     @action(detail=True, methods=['post'])
     def issue(self, request, pk=None):
         """Issue a PO."""
@@ -658,6 +882,59 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
             'message': f'PO {po.po_no} has been rejected',
             'purchase_order': serializer.data,
         })
+
+    def destroy(self, request, *args, **kwargs):
+        """Soft-delete PO: sets is_active=False, releases PO for re-generation in Quote Evaluation."""
+        po = self.get_object()
+
+        with transaction.atomic():
+            # Collect info before soft delete
+            linked_pr_nos = ", ".join(pr.pr_no for pr in po.linked_prs.all())
+            linked_rfq_no = po.linked_rfq.rfq_no if po.linked_rfq else "None"
+
+            # Soft delete the PO and its lines
+            po.soft_delete()
+            po.po_lines.update(is_active=False)
+
+            # Reset chosen_flag on quotes linked to this PO's RFQ
+            if po.linked_rfq:
+                QuoteResponse.objects.filter(
+                    rfq=po.linked_rfq,
+                    chosen_flag=True
+                ).update(chosen_flag=False)
+
+            # Reset quote chosen_flag via PO lines → linked quote lines
+            for po_line in po.po_lines.all():
+                if po_line.linked_rfq_line:
+                    quote = po_line.linked_rfq_line.quote
+                    if quote and quote.chosen_flag:
+                        quote.chosen_flag = False
+                        quote.save(update_fields=['chosen_flag'])
+
+            # Soft-delete evaluations linked to this PO's RFQ so they can be re-done
+            if po.linked_rfq:
+                QuoteEvaluation.objects.filter(
+                    rfq=po.linked_rfq,
+                    is_active=True
+                ).update(is_active=False)
+
+            # Audit log
+            AuditLog.objects.create(
+                user=request.user,
+                role_name=get_user_role_name(request.user),
+                module_name='Purchase Order',
+                action='DELETE',
+                details=f'PO {po.po_no} deleted (soft). '
+                        f'Quote chosen_flag and evaluations reset. '
+                        f'PO released for re-generation. '
+                        f'Linked PRs: {linked_pr_nos}. '
+                        f'Linked RFQ: {linked_rfq_no}.'
+            )
+
+        return Response(
+            {'message': f'PO {po.po_no} deleted. PO number is now available for re-generation in Quote Evaluation.'},
+            status=status.HTTP_200_OK
+        )
 
     @action(detail=True, methods=['post'], url_path='send-email')
     def send_email(self, request, pk=None):
@@ -1759,17 +2036,28 @@ class EvaluationDashboardSubmitView(APIView):
                 except QuoteResponse.DoesNotExist:
                     pass
 
-            # 3. Optionally auto-create PO
+            # 3. Optionally auto-create PO (prevent duplicates — only if no active PO exists for this PR)
             po_data = None
             if generate_po:
-                po = self._create_po_from_quote(accepted_quote, pr, request.user)
-                po_data = {
-                    'id': str(po.id),
-                    'po_no': po.po_no,
-                    'vendor_name': po.vendor.vendor_name if po.vendor else '',
-                    'total_amount': float(po.get_total_order_value()),
-                    'status': po.status,
-                }
+                existing_po = PurchaseOrder.objects.filter(linked_prs=pr, is_active=True).first()
+                if existing_po:
+                    po_data = {
+                        'id': str(existing_po.id),
+                        'po_no': existing_po.po_no,
+                        'vendor_name': existing_po.vendor.vendor_name if existing_po.vendor else '',
+                        'total_amount': float(existing_po.get_total_order_value()),
+                        'status': existing_po.status,
+                        'already_existed': True,
+                    }
+                else:
+                    po = self._create_po_from_quote(accepted_quote, pr, request.user)
+                    po_data = {
+                        'id': str(po.id),
+                        'po_no': po.po_no,
+                        'vendor_name': po.vendor.vendor_name if po.vendor else '',
+                        'total_amount': float(po.get_total_order_value()),
+                        'status': po.status,
+                    }
 
             # 4. Audit logging
             AuditLog.objects.create(
@@ -2166,8 +2454,9 @@ class PurchaseLifecycleGraphView(APIView):
         if kpis['total_billed'] > 0 and kpis['total_paid'] < kpis['total_billed']:
             kpis['pending_payments'] = round(kpis['total_billed'] - kpis['total_paid'], 2)
 
-        # Sort timeline
-        timeline.sort(key=lambda t: t.get('date') or '')
+        # Sort timeline by date, then by lifecycle stage order
+        _stage_order = {'pr': 0, 'rfq': 1, 'quote': 2, 'evaluation': 3, 'po': 4, 'grn': 5, 'freight': 6, 'bill': 7, 'payment': 8, 'credit': 9}
+        timeline.sort(key=lambda t: (t.get('date') or '', _stage_order.get(t.get('type'), 99)))
 
         # ── Status funnel ───────────────────────────────────────
         funnel = [

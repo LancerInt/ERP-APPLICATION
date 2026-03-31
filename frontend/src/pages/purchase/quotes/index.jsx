@@ -3,41 +3,32 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import MainLayout from '../../../components/layout/MainLayout';
 import PageHeader from '../../../components/common/PageHeader';
-import FilterPanel from '../../../components/common/FilterPanel';
 import DataTable from '../../../components/common/DataTable';
 import StatusBadge from '../../../components/common/StatusBadge';
 import useApiData from '../../../hooks/useApiData.js';
 import apiClient from '../../../utils/api.js';
+import UnifiedFilterPanel, { useUnifiedFilter } from '../components/UnifiedFilterPanel';
+
+const FILTER_FIELDS = [
+  { value: 'quote_id', label: 'Quote ID', type: 'text' },
+  { value: 'rfq_no', label: 'RFQ No', type: 'text' },
+  { value: 'vendor_name', label: 'Vendor', type: 'text' },
+  { value: 'quote_date', label: 'Quote Date', type: 'date' },
+  { value: 'price_valid_till', label: 'Valid Till', type: 'date' },
+  { value: 'currency', label: 'Currency', type: 'text' },
+  { value: 'freight_terms', label: 'Freight Terms', type: 'select', options: [
+    { value: 'PAID', label: 'Paid' }, { value: 'To_Pay', label: 'To Pay' }, { value: 'MIXED', label: 'Mixed' },
+  ]},
+  { value: 'chosen_flag', label: 'Chosen', type: 'select', options: [
+    { value: 'true', label: 'Yes' }, { value: 'false', label: 'No' },
+  ]},
+];
 
 export default function QuoteResponseList() {
   const navigate = useNavigate();
   const { data, isLoading, error, refetch } = useApiData('/api/purchase/quotes/');
   const [showFilters, setShowFilters] = useState(false);
-  const [filterValues, setFilterValues] = useState({});
-
-  const filters = [
-    { key: 'search', label: 'Search', type: 'text', placeholder: 'Search quotes...' },
-    { key: 'vendor', label: 'Vendor', type: 'text', placeholder: 'Filter by vendor...' },
-    {
-      key: 'freight_terms',
-      label: 'Freight Terms',
-      type: 'select',
-      options: [
-        { value: 'PAID', label: 'Paid' },
-        { value: 'To_Pay', label: 'To Pay' },
-        { value: 'MIXED', label: 'Mixed' },
-      ],
-    },
-    {
-      key: 'chosen',
-      label: 'Chosen',
-      type: 'select',
-      options: [
-        { value: 'Yes', label: 'Yes' },
-        { value: 'No', label: 'No' },
-      ],
-    },
-  ];
+  const filter = useUnifiedFilter(FILTER_FIELDS);
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this quote response?')) return;
@@ -50,9 +41,19 @@ export default function QuoteResponseList() {
 
   const columns = [
     { key: 'quote_id', label: 'Quote ID', sortable: true },
-    { key: 'rfq_no', label: 'RFQ No', sortable: true, render: (value, row) => value || (row.rfq ? row.rfq.substring(0, 8) + '...' : '-') },
+    { key: 'rfq_no', label: 'RFQ No', sortable: true, render: (value, row) => {
+      const display = value || (row.rfq ? row.rfq.substring(0, 8) + '...' : '-');
+      return row.rfq ? (
+        <button onClick={(e) => { e.stopPropagation(); navigate(`/purchase/rfq/${row.rfq}`); }} className="text-primary-600 hover:text-primary-800 hover:underline font-medium">{display}</button>
+      ) : display;
+    }},
     { key: 'pr_numbers', label: 'PR No', sortable: true, render: (value) => Array.isArray(value) ? value.join(', ') : (value || '-') },
-    { key: 'vendor_name', label: 'Vendor', sortable: true, render: (value, row) => value || row.vendor_code || '-' },
+    { key: 'vendor_name', label: 'Vendor', sortable: true, render: (value, row) => {
+      const display = value || row.vendor_code || '-';
+      return row.vendor ? (
+        <button onClick={(e) => { e.stopPropagation(); navigate(`/masters/vendors/${row.vendor}`); }} className="text-primary-600 hover:text-primary-800 hover:underline font-medium">{display}</button>
+      ) : display;
+    }},
     { key: 'quote_date', label: 'Quote Date', sortable: true, render: (value) => value ? new Date(value).toLocaleDateString() : '-' },
     { key: 'price_valid_till', label: 'Valid Till', sortable: true, render: (value) => value ? new Date(value).toLocaleDateString() : '-' },
     { key: 'currency', label: 'Currency', sortable: true },
@@ -74,37 +75,14 @@ export default function QuoteResponseList() {
     },
   ];
 
-  const filteredData = (data || []).filter((row) => {
-    if (filterValues.search) {
-      const search = filterValues.search.toLowerCase();
-      const matchesSearch = Object.values(row).some((v) =>
-        String(v).toLowerCase().includes(search)
-      );
-      if (!matchesSearch) return false;
-    }
-    if (filterValues.vendor) {
-      const vendorSearch = filterValues.vendor.toLowerCase();
-      if (!row.vendor.toLowerCase().includes(vendorSearch)) return false;
-    }
-    if (filterValues.freight_terms && row.freight_terms !== filterValues.freight_terms) {
-      return false;
-    }
-    if (filterValues.chosen && row.chosen_flag !== filterValues.chosen) {
-      return false;
-    }
-    return true;
-  });
+  const filteredData = filter.filterData(data || []);
 
   return (
     <MainLayout>
       <PageHeader
         title="Quote Responses"
         subtitle="Manage vendor quote responses for RFQs"
-        breadcrumbs={[
-          { label: 'Masters', href: '/masters' },
-          { label: 'Purchase', href: '/purchase' },
-          { label: 'Quote Responses' },
-        ]}
+        breadcrumbs={[{ label: 'Masters', href: '/masters' }, { label: 'Purchase', href: '/purchase' }, { label: 'Quote Responses' }]}
         actions={{
           onFilter: () => setShowFilters(!showFilters),
           onExport: () => {},
@@ -112,23 +90,10 @@ export default function QuoteResponseList() {
           createLabel: 'New Quote',
         }}
       />
-      {showFilters && (
-        <FilterPanel
-          filters={filters}
-          values={filterValues}
-          onChange={(key, value) => setFilterValues((prev) => ({ ...prev, [key]: value }))}
-          onReset={() => setFilterValues({})}
-          onClose={() => setShowFilters(false)}
-        />
-      )}
+      <UnifiedFilterPanel filterFields={FILTER_FIELDS} filter={filter} showFilters={showFilters} onClose={() => setShowFilters(false)} />
       {isLoading && <div className="text-center py-8 text-slate-500">Loading...</div>}
       {error && <div className="text-center py-8 text-red-500">Failed to load data</div>}
-      <DataTable
-        exportFileName="quote-responses"
-        columns={columns}
-        data={filteredData}
-        onRowClick={(row) => navigate(`/purchase/quotes/${row.id}`)}
-      />
+      <DataTable exportFileName="quote-responses" columns={columns} data={filteredData} onRowClick={(row) => navigate(`/purchase/quotes/${row.id}/edit`)} />
     </MainLayout>
   );
 }

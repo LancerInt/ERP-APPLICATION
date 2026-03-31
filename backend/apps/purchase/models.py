@@ -118,6 +118,10 @@ class PurchaseRequest(BaseModel):
         blank=True,
         help_text="Timestamp when the PR was approved"
     )
+    allow_rfq_skip = models.BooleanField(
+        default=False,
+        help_text="If True, approval creates PO directly instead of RFQ"
+    )
     linked_rfq = models.ForeignKey(
         'purchase.RFQHeader',
         on_delete=models.SET_NULL,
@@ -770,7 +774,9 @@ class PurchaseOrder(BaseModel):
     vendor = models.ForeignKey(
         'master.Vendor',
         on_delete=models.PROTECT,
-        related_name='purchase_orders'
+        related_name='purchase_orders',
+        null=True,
+        blank=True
     )
     company = models.ForeignKey(
         'core.Company',

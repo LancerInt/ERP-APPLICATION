@@ -12,6 +12,7 @@ import {
   FileText,
   Link as LinkIcon,
   Trash2,
+  SkipForward,
 } from 'lucide-react';
 import MainLayout from '../../../components/layout/MainLayout';
 import StatusBadge from '../../../components/common/StatusBadge';
@@ -52,6 +53,7 @@ export default function PurchaseRequestDetailPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [isRejecting, setIsRejecting] = useState(false);
+  const [isSkippingRfq, setIsSkippingRfq] = useState(false);
   const [editData, setEditData] = useState({});
   const [editLines, setEditLines] = useState([]);
 
@@ -85,7 +87,7 @@ export default function PurchaseRequestDetailPage() {
   // Permission checks
   const { canApprove: canApproveModule, canReject: canRejectModule } = usePermissions();
   const canEditPR = canEdit('Purchase Request');  // Allow edit for any status (save will handle restrictions)
-  const canApprovePR = (isEdited || isPendingApproval) && canApproveModule('Purchase Request') && !isApproved;
+  const canApprovePR = (isDraft || isEdited || isPendingApproval) && canApproveModule('Purchase Request') && !isApproved;
   const canRejectPR = !isApproved && !isRejected && canRejectModule('Purchase Request');
 
   const handleDelete = async () => {
@@ -168,12 +170,18 @@ export default function PurchaseRequestDetailPage() {
 
   // Handle approve
   const handleApprove = async () => {
-    if (!window.confirm('Are you sure you want to approve this Purchase Request? This will auto-create an RFQ.')) return;
+    const isSkipRfq = pr?.allow_rfq_skip;
+    const confirmMsg = isSkipRfq
+      ? 'Approve this PR and create a Purchase Order directly (RFQ Skipped)?'
+      : 'Are you sure you want to approve this Purchase Request? This will auto-create an RFQ.';
+    if (!window.confirm(confirmMsg)) return;
     setIsApproving(true);
     try {
       const res = await apiClient.post(`/api/purchase/requests/${id}/approve/`);
       toast.success(res.data.message || 'Approved successfully!');
-      if (res.data.rfq_no) {
+      if (res.data.po_no) {
+        toast.success(`PO ${res.data.po_no} created (RFQ Skipped)`);
+      } else if (res.data.rfq_no) {
         toast.success(`RFQ ${res.data.rfq_no} created automatically`);
       }
       fetchPR();
@@ -197,6 +205,26 @@ export default function PurchaseRequestDetailPage() {
       toast.error(err.response?.data?.error || 'Failed to reject');
     } finally {
       setIsRejecting(false);
+    }
+  };
+
+  // Handle Allow RFQ Skip — approve PR + create PO directly
+  const handleSkipRfq = async () => {
+    if (!window.confirm('Do you want to skip RFQ and create a Purchase Order directly from this Purchase Request?')) return;
+    setIsSkippingRfq(true);
+    try {
+      const res = await apiClient.post(`/api/purchase/requests/${id}/skip-rfq-create-po/`);
+      toast.success(res.data.message || 'PO created (RFQ Skipped)!');
+      navigate('/purchase/orders');
+    } catch (err) {
+      console.error('Skip RFQ error:', err.response?.data || err);
+      const errData = err.response?.data;
+      const errMsg = typeof errData === 'object'
+        ? (errData.error || errData.detail || JSON.stringify(errData))
+        : 'Failed to create PO';
+      toast.error(errMsg);
+    } finally {
+      setIsSkippingRfq(false);
     }
   };
 
@@ -377,13 +405,6 @@ export default function PurchaseRequestDetailPage() {
                   <CheckCircle size={16} />
                   {isApproving ? 'Approving...' : 'Approve'}
                 </button>
-                {/* Tooltip when approve is disabled */}
-                {!canApprovePR && isDraft && (
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-slate-800 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                    Save changes first before approving
-                    <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-800" />
-                  </div>
-                )}
               </div>
             )}
 
@@ -398,6 +419,7 @@ export default function PurchaseRequestDetailPage() {
                 {isRejecting ? 'Rejecting...' : 'Reject'}
               </button>
             )}
+
           </div>
         </div>
 

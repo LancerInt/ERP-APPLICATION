@@ -65,7 +65,7 @@ import RFQNew from './pages/purchase/rfq/new.jsx';
 import QuoteNew from './pages/purchase/quotes/new.jsx';
 import EvaluationNew from './pages/purchase/evaluations/new.jsx';
 import EvaluationDetail from './pages/purchase/evaluations/[id].jsx';
-import EvaluationDashboard from './pages/purchase/evaluations/dashboard.jsx';
+// EvaluationDashboard merged into EvaluationList (index.jsx) as a tab
 import PurchaseLifecycleDashboard from './pages/purchase/lifecycle/index.jsx';
 // DocumentExtractor merged into Quote Response page
 import PurchaseOrderNew from './pages/purchase/orders/new.jsx';
@@ -256,7 +256,7 @@ function App() {
           <Route path="/purchase/quotes/:id/edit" element={<ProtectedRoute module="Quote" action="edit"><QuoteNew /></ProtectedRoute>} />
           <Route path="/purchase/evaluations" element={<ProtectedRoute module="Quote Evaluation"><EvaluationList /></ProtectedRoute>} />
           <Route path="/purchase/evaluations/new" element={<ProtectedRoute module="Quote Evaluation" action="create"><EvaluationNew /></ProtectedRoute>} />
-          <Route path="/purchase/evaluations/dashboard" element={<ProtectedRoute module="Quote Evaluation"><EvaluationDashboard /></ProtectedRoute>} />
+          <Route path="/purchase/evaluations/dashboard" element={<ProtectedRoute module="Quote Evaluation"><EvaluationList /></ProtectedRoute>} />
           <Route path="/purchase/evaluations/:id" element={<ProtectedRoute module="Quote Evaluation"><EvaluationDetail /></ProtectedRoute>} />
           <Route path="/purchase/lifecycle" element={<ProtectedRoute module="Purchase Request"><PurchaseLifecycleDashboard /></ProtectedRoute>} />
           <Route path="/purchase/orders" element={<ProtectedRoute module="Purchase Order"><PurchaseOrders /></ProtectedRoute>} />

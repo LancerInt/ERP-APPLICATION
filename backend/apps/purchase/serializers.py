@@ -143,7 +143,7 @@ class PurchaseRequestSerializer(serializers.ModelSerializer):
             'requestor_role', 'requirement_type', 'requirement_type_display',
             'priority', 'priority_display', 'required_by_date', 'justification',
             'approval_status', 'approval_status_display', 'visibility_scope',
-            'notes', 'approved_by', 'approved_by_name', 'approved_at',
+            'notes', 'allow_rfq_skip', 'approved_by', 'approved_by_name', 'approved_at',
             'linked_rfq', 'linked_rfq_no', 'has_po',
             'lines', 'approval_trails', 'created_at', 'updated_at'
         ]
@@ -590,6 +590,7 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
             'id', 'po_no', 'revision_no', 'po_date', 'created_at', 'updated_at'
         ]
         extra_kwargs = {
+            'vendor': {'required': False},
             'linked_rfq': {'required': False},
             'expected_delivery_start': {'required': False},
             'expected_delivery_end': {'required': False},

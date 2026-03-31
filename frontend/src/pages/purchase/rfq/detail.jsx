@@ -225,33 +225,6 @@ export default function RFQDetailPage() {
               </div>
             )}
 
-            {/* Vendor Selection & Email - below PR details */}
-            <div className="bg-white rounded-lg border border-slate-200 p-6">
-              <div className="flex items-center justify-between mb-4 pb-2 border-b">
-                <h3 className="text-lg font-semibold text-slate-800">Select Vendors & Send Email</h3>
-                <select value={selectedTemplate} onChange={e => { setSelectedTemplate(e.target.value); setVendorsSaved(false); }} className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm">
-                  <option value="">Select Template...</option>
-                  {templates.map(t => <option key={t.id} value={t.id}>{t.name}{t.is_default ? ' ★' : ''}</option>)}
-                </select>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto mb-4">
-                {vendors.map(v => (
-                  <label key={v.id} className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition text-sm ${vendorsSaved ? 'cursor-default' : ''} ${selectedVendors.includes(v.id) ? 'bg-blue-50 border-blue-400' : 'bg-white border-slate-200 hover:border-blue-300'}`}>
-                    <input type="checkbox" checked={selectedVendors.includes(v.id)} onChange={() => { if (!vendorsSaved) toggleVendor(v.id); }} disabled={vendorsSaved} className="rounded border-slate-300 text-blue-600" />
-                    <div className="min-w-0"><div className="font-medium truncate text-xs">{v.vendor_name || v.vendor_code}</div>{v.contact_email ? <div className="text-xs text-slate-500 truncate">{v.contact_email}</div> : <div className="text-xs text-red-400">No email</div>}</div>
-                  </label>
-                ))}
-              </div>
-              <div className="flex items-center justify-between border-t pt-3">
-                <span className="text-sm text-slate-600">{selectedVendors.length > 0 && <><Check size={14} className="inline text-blue-600" /> {selectedVendors.length} selected {vendorsSaved && <span className="text-green-600">✓ Saved</span>}</>}</span>
-                <div className="flex gap-2">
-                  {!vendorsSaved && <button onClick={handleSaveVendors} disabled={!selectedVendors.length} className="flex items-center gap-1 px-4 py-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 disabled:opacity-40"><Save size={14} /> Save</button>}
-                  <button onClick={handleSendEmail} disabled={!vendorsSaved || isSending} className={`flex items-center gap-1 px-4 py-2 text-sm font-medium rounded-lg ${vendorsSaved ? 'text-white bg-primary-600 hover:bg-primary-700' : 'text-slate-400 bg-slate-100 cursor-not-allowed'}`}>
-                    <Mail size={14} /> {isSending ? 'Sending...' : vendorsSaved ? `Send (${selectedVendors.length})` : 'Send Email'}
-                  </button>
-                </div>
-              </div>
-            </div>
           </div>
 
           {/* Sidebar */}

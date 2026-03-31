@@ -134,8 +134,6 @@ export default function CreateQuoteResponse() {
   const isEditMode = !!id;
   const { options: rfqOptions, raw: rfqRaw } = useLookup('/api/purchase/rfq/');
   const { raw: evalRaw } = useLookup('/api/purchase/evaluations/');
-  const evaluatedRfqIds = new Set(evalRaw.map(e => e.rfq));
-  const filteredRfqOptions = rfqOptions.filter(o => !evaluatedRfqIds.has(o.value));
   const { options: vendorOptions, raw: vendorRaw } = useLookup('/api/vendors/');
   const { options: productOptions, raw: productRaw } = useLookup('/api/products/');
   const fileInputRef = useRef(null);
@@ -154,10 +152,17 @@ export default function CreateQuoteResponse() {
     remarks: '',
   });
 
+  // Computed after formData is declared
+  const evaluatedRfqIds = new Set(evalRaw.map(e => e.rfq));
+  const filteredRfqOptions = rfqOptions.filter(o => !evaluatedRfqIds.has(o.value) || o.value === rfqFromUrl || o.value === formData.rfq);
+
   // Track which fields were auto-filled and their confidence
   const [autoFilledFields, setAutoFilledFields] = useState({});
   // Track source texts for auto-filled fields (for tooltips)
   const [fieldSources, setFieldSources] = useState({});
+
+  // Store rfq_no from edit data for fallback display
+  const [editRfqOption, setEditRfqOption] = useState(null);
 
   // Load existing data in edit mode
   useEffect(() => {
@@ -170,6 +175,10 @@ export default function CreateQuoteResponse() {
         payment_terms: q.payment_terms || '',
         delivery_terms: q.delivery_terms || '', lead_time_days: q.lead_time_days || '', remarks: q.remarks || '',
       });
+      // Save RFQ option as fallback in case lookup hasn't loaded yet
+      if (q.rfq && q.rfq_no) {
+        setEditRfqOption({ value: q.rfq, label: q.rfq_no });
+      }
       if (q.quote_lines?.length > 0) {
         setLineItems(q.quote_lines.map(l => ({
           product: l.product_service || '', quantity: l.quantity_offered || 1, uom: l.uom || 'KG',
@@ -799,34 +808,6 @@ export default function CreateQuoteResponse() {
       {fillMode === 'autofill' && <div className="bg-white rounded-lg border border-slate-200 p-6 mb-6">
         <h3 className="text-lg font-semibold text-slate-800 mb-4">Extract Quote Data</h3>
 
-        {/* Text paste extraction section */}
-        <div className="mb-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
-          <h4 className="text-sm font-semibold text-slate-700 mb-2">Paste Text (Email, WhatsApp, OCR)</h4>
-          <textarea
-            value={extractText}
-            onChange={(e) => setExtractText(e.target.value)}
-            rows={5}
-            placeholder="Paste vendor quote text here — from email, WhatsApp message, OCR scan, etc."
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 mb-2"
-          />
-          <button
-            type="button"
-            onClick={handleTextExtract}
-            disabled={isExtracting || !extractText.trim()}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
-          >
-            {isExtracting ? (
-              <><svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> Extracting...</>
-            ) : 'Extract from Text'}
-          </button>
-        </div>
-
-        <div className="relative flex items-center my-4">
-          <div className="flex-grow border-t border-slate-200"></div>
-          <span className="px-3 text-xs text-slate-400 uppercase">or upload a file</span>
-          <div className="flex-grow border-t border-slate-200"></div>
-        </div>
-
         {/* Drop zone */}
         {!uploadedFile && (
           <div
@@ -1079,7 +1060,14 @@ export default function CreateQuoteResponse() {
                 </label>
                 <select name="rfq" value={formData.rfq} onChange={handleRfqChange} required className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
                   <option value="">Select RFQ</option>
-                  {filteredRfqOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  {(() => {
+                    const opts = isEditMode ? rfqOptions : filteredRfqOptions;
+                    // If in edit mode and the current RFQ isn't in options yet, add it
+                    if (editRfqOption && !opts.find(o => o.value === editRfqOption.value)) {
+                      return [editRfqOption, ...opts].map(o => <option key={o.value} value={o.value}>{o.label}</option>);
+                    }
+                    return opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>);
+                  })()}
                 </select>
               </div>
               <div>
@@ -1289,6 +1277,7 @@ export default function CreateQuoteResponse() {
             <div className="space-y-3">
               <div>
                 <input
+                  id="attachment-input"
                   type="file"
                   multiple
                   onChange={(e) => {
@@ -1296,8 +1285,16 @@ export default function CreateQuoteResponse() {
                     setAttachments(prev => [...prev, ...files]);
                     e.target.value = '';
                   }}
-                  className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
+                  className="hidden"
                 />
+                <button
+                  type="button"
+                  onClick={() => document.getElementById('attachment-input').click()}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-300 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+                  Choose Files
+                </button>
               </div>
               {attachments.length > 0 && (
                 <div className="space-y-2">
