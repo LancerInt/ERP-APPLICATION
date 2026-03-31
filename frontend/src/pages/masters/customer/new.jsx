@@ -10,7 +10,6 @@ import useLookup from '../../../hooks/useLookup.js';
 export default function CreateCustomer() {
   const navigate = useNavigate();
   const { options: companies } = useLookup('/api/companies/');
-  const { options: warehouses } = useLookup('/api/warehouses/');
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     customer_code: '',
@@ -31,8 +30,16 @@ export default function CreateCustomer() {
     notes: '',
   });
 
+  const { options: warehouses } = useLookup(
+    formData.company ? `/api/warehouses/?company=${formData.company}` : null
+  );
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
+    if (name === 'company') {
+      setFormData(prev => ({ ...prev, company: value, default_warehouse: '' }));
+      return;
+    }
     setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
   };
 
@@ -143,8 +150,8 @@ export default function CreateCustomer() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Default Warehouse <span className="text-red-500">*</span></label>
-                <select name="default_warehouse" value={formData.default_warehouse} onChange={handleChange} required className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
-                  <option value="">Select...</option>
+                <select name="default_warehouse" value={formData.default_warehouse} onChange={handleChange} required disabled={!formData.company} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:bg-slate-100 disabled:cursor-not-allowed">
+                  <option value="">{formData.company ? 'Select...' : 'Select company first...'}</option>
                   {warehouses.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                 </select>
               </div>

@@ -63,7 +63,9 @@ export default function PurchaseRequestList() {
       render: (value) => <StatusBadge status={value || 'DRAFT'} />,
     },
     { key: 'request_date', label: 'Created', sortable: true, filterType: 'date', render: (value) => value ? new Date(value).toLocaleDateString() : '-' },
-    { key: 'linked_rfq_no', label: 'Linked RFQ', filterType: 'text', render: (value) => value || '-' },
+    { key: 'linked_rfq_no', label: 'Linked RFQ', filterType: 'text', render: (value, row) => value ? (
+      <button onClick={(e) => { e.stopPropagation(); navigate(`/purchase/rfq/${row.linked_rfq}`); }} className="text-primary-600 hover:text-primary-800 hover:underline font-medium">{value}</button>
+    ) : '-' },
     {
       key: 'actions', label: 'Actions', sortable: false,
       render: (value, row) => (

@@ -24,7 +24,6 @@ const emptySOLine = {
 export default function CreateSalesOrder() {
   const navigate = useNavigate();
   const { options: companyOptions } = useLookup('/api/companies/');
-  const { options: warehouseOptions } = useLookup('/api/warehouses/');
   const { options: productOptions } = useLookup('/api/products/');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -51,11 +50,15 @@ export default function CreateSalesOrder() {
   });
   const [soLines, setSoLines] = useState([{ ...emptySOLine }]);
 
+  const { options: warehouseOptions } = useLookup(
+    formData.company ? `/api/warehouses/?company=${formData.company}` : null
+  );
+
   // 1. Company changed → fetch customers for that company
   useEffect(() => {
     if (!formData.company) {
       setFilteredCustomers([]);
-      setFormData(prev => ({ ...prev, customer: '', price_list: '' }));
+      setFormData(prev => ({ ...prev, customer: '', price_list: '', warehouse: '' }));
       setFilteredPriceLists([]);
       setPriceLines([]);
       return;
@@ -236,8 +239,8 @@ export default function CreateSalesOrder() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Warehouse <span className="text-red-500">*</span></label>
-                <select name="warehouse" value={formData.warehouse} onChange={handleChange} required className={inputClass}>
-                  <option value="">Select Warehouse</option>
+                <select name="warehouse" value={formData.warehouse} onChange={handleChange} required disabled={!formData.company} className={`${inputClass} disabled:bg-slate-100 disabled:cursor-not-allowed`}>
+                  <option value="">{formData.company ? 'Select Warehouse' : 'Select company first...'}</option>
                   {warehouseOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
