@@ -52,7 +52,8 @@ export default function CreateReceiptAdvice() {
   const navigate = useNavigate();
   const { options: vendorOptions, raw: vendorRaw } = useLookup('/api/vendors/');
   const { options: transporterOptions } = useLookup('/api/transporters/');
-  const { options: warehouseOptions } = useLookup('/api/warehouses/');
+  const [selectedCompany, setSelectedCompany] = useState('');
+  const { options: companyOptions } = useLookup('/api/companies/');
   const { raw: poRawData } = useLookup('/api/purchase/orders/?status__in=APPROVED,ISSUED');
   const poOptions = poRawData
     .filter(po => !po.is_fully_received)
@@ -73,7 +74,6 @@ export default function CreateReceiptAdvice() {
     })
     .map(v => ({ value: v.id, label: v.vendor_name || v.vendor_code }));
   const contractorVendorOptions = contractorOptions.length > 0 ? contractorOptions : vendorOptions;
-  const { options: godownOptions } = useLookup('/api/godowns/');
   const { options: productOptions } = useLookup('/api/products/');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -89,6 +89,13 @@ export default function CreateReceiptAdvice() {
     partial_receipt_flag: false,
     remarks: '',
   });
+
+  const { options: warehouseOptions } = useLookup(
+    selectedCompany ? `/api/warehouses/?company=${selectedCompany}` : null
+  );
+  const { options: godownOptions } = useLookup(
+    formData.warehouse ? `/api/godowns/?warehouse=${formData.warehouse}` : null
+  );
 
   const [receiptLines, setReceiptLines] = useState([{ ...emptyReceiptLine }]);
   const [packingLines, setPackingLines] = useState([]);
@@ -268,16 +275,23 @@ export default function CreateReceiptAdvice() {
                 </select>
               </div>
               <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Company <span className="text-red-500">*</span></label>
+                <select value={selectedCompany} onChange={(e) => { setSelectedCompany(e.target.value); setFormData(prev => ({ ...prev, warehouse: '', godown: '' })); }} required className={inputClass}>
+                  <option value="">Select Company</option>
+                  {companyOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Warehouse <span className="text-red-500">*</span></label>
-                <select name="warehouse" value={formData.warehouse} onChange={handleChange} required className={inputClass}>
-                  <option value="">Select Warehouse</option>
+                <select name="warehouse" value={formData.warehouse} onChange={(e) => { setFormData(prev => ({ ...prev, warehouse: e.target.value, godown: '' })); }} required disabled={!selectedCompany} className={`${inputClass} disabled:bg-slate-100 disabled:cursor-not-allowed`}>
+                  <option value="">{selectedCompany ? 'Select Warehouse' : 'Select company first...'}</option>
                   {warehouseOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Godown</label>
-                <select name="godown" value={formData.godown} onChange={handleChange} className={inputClass}>
-                  <option value="">Select Godown</option>
+                <select name="godown" value={formData.godown} onChange={handleChange} disabled={!formData.warehouse} className={`${inputClass} disabled:bg-slate-100 disabled:cursor-not-allowed`}>
+                  <option value="">{formData.warehouse ? 'Select Godown' : 'Select warehouse first...'}</option>
                   {godownOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>

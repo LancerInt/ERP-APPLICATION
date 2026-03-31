@@ -133,7 +133,7 @@ class PurchaseRequestSerializer(serializers.ModelSerializer):
         return None
 
     def get_has_po(self, obj):
-        return obj.purchase_orders.exists()
+        return obj.purchase_orders.filter(is_active=True).exists()
 
     class Meta:
         model = PurchaseRequest

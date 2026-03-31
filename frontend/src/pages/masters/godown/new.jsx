@@ -9,7 +9,11 @@ import useLookup from '../../../hooks/useLookup.js';
 
 export default function CreateGodown() {
   const navigate = useNavigate();
-  const { options: warehouses } = useLookup('/api/warehouses/');
+  const [selectedCompany, setSelectedCompany] = useState('');
+  const { options: companies } = useLookup('/api/companies/');
+  const { options: warehouses } = useLookup(
+    selectedCompany ? `/api/warehouses/?company=${selectedCompany}` : null
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     godown_code: '',
@@ -68,9 +72,16 @@ export default function CreateGodown() {
                 <input type="text" name="godown_code" value={formData.godown_code} onChange={handleChange} required className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500" placeholder="Enter godown code" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Warehouse <span className="text-red-500">*</span></label>
-                <select name="warehouse" value={formData.warehouse} onChange={handleChange} required className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                <label className="block text-sm font-medium text-slate-700 mb-1">Company <span className="text-red-500">*</span></label>
+                <select value={selectedCompany} onChange={(e) => { setSelectedCompany(e.target.value); setFormData(prev => ({ ...prev, warehouse: '' })); }} required className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
                   <option value="">Select...</option>
+                  {companies.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Warehouse <span className="text-red-500">*</span></label>
+                <select name="warehouse" value={formData.warehouse} onChange={handleChange} required disabled={!selectedCompany} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:bg-slate-100 disabled:cursor-not-allowed">
+                  <option value="">{selectedCompany ? 'Select...' : 'Select company first...'}</option>
                   {warehouses.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                 </select>
               </div>

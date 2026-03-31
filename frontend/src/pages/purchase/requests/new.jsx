@@ -12,8 +12,8 @@ import usePermissions from '../../../hooks/usePermissions.js';
 export default function CreatePurchaseRequest() {
   const navigate = useNavigate();
   const { role } = usePermissions();
-  const { options: warehouseOptions } = useLookup('/api/warehouses/');
-  const { options: godownOptions } = useLookup('/api/godowns/');
+  const [selectedCompany, setSelectedCompany] = useState('');
+  const { options: companyOptions } = useLookup('/api/companies/');
   const { options: productOptions, raw: productList } = useLookup('/api/products/');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -27,6 +27,13 @@ export default function CreatePurchaseRequest() {
     justification: '',
     notes: '',
   });
+
+  const { options: warehouseOptions } = useLookup(
+    selectedCompany ? `/api/warehouses/?company=${selectedCompany}` : null
+  );
+  const { options: godownOptions } = useLookup(
+    formData.warehouse ? `/api/godowns/?warehouse=${formData.warehouse}` : null
+  );
 
   const [lineItems, setLineItems] = useState([
     { product: '', quantity: 1, uom: 'KG', description: '' },
@@ -138,16 +145,23 @@ export default function CreatePurchaseRequest() {
               <input type="text" value={formData.requestor_role} disabled className={readonlyClass} />
             </div>
             <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Company <span className="text-red-500">*</span></label>
+              <select value={selectedCompany} onChange={(e) => { setSelectedCompany(e.target.value); setFormData(prev => ({ ...prev, warehouse: '', godown: '' })); }} required className={inputClass}>
+                <option value="">Select Company...</option>
+                {companyOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Warehouse <span className="text-red-500">*</span></label>
-              <select name="warehouse" value={formData.warehouse} onChange={handleChange} required className={inputClass}>
-                <option value="">Select Warehouse...</option>
+              <select name="warehouse" value={formData.warehouse} onChange={(e) => { setFormData(prev => ({ ...prev, warehouse: e.target.value, godown: '' })); }} required disabled={!selectedCompany} className={`${inputClass} disabled:bg-slate-100 disabled:cursor-not-allowed`}>
+                <option value="">{selectedCompany ? 'Select Warehouse...' : 'Select company first...'}</option>
                 {warehouseOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Godown</label>
-              <select name="godown" value={formData.godown} onChange={handleChange} className={inputClass}>
-                <option value="">Select Godown...</option>
+              <select name="godown" value={formData.godown} onChange={handleChange} disabled={!formData.warehouse} className={`${inputClass} disabled:bg-slate-100 disabled:cursor-not-allowed`}>
+                <option value="">{formData.warehouse ? 'Select Godown...' : 'Select warehouse first...'}</option>
                 {godownOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
