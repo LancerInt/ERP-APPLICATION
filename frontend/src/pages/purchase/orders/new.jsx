@@ -11,7 +11,6 @@ export default function CreatePurchaseOrder() {
   const navigate = useNavigate();
   const { options: vendorOptions } = useLookup('/api/vendors/');
   const { options: companyOptions } = useLookup('/api/companies/');
-  const { options: warehouseOptions } = useLookup('/api/warehouses/');
   const { options: rfqOptions } = useLookup('/api/purchase/rfq/');
   const { options: transporterOptions } = useLookup('/api/transporters/');
   const [isLoading, setIsLoading] = useState(false);
@@ -32,8 +31,16 @@ export default function CreatePurchaseOrder() {
     notes: '',
   });
 
+  const { options: warehouseOptions } = useLookup(
+    formData.company ? `/api/warehouses/?company=${formData.company}` : null
+  );
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
+    if (name === 'company') {
+      setFormData(prev => ({ ...prev, company: value, warehouse: '' }));
+      return;
+    }
     setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
   };
 
@@ -85,8 +92,8 @@ export default function CreatePurchaseOrder() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Warehouse <span className="text-red-500">*</span></label>
-                <select name="warehouse" value={formData.warehouse} onChange={handleChange} required className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
-                  <option value="">Select Warehouse</option>
+                <select name="warehouse" value={formData.warehouse} onChange={handleChange} required disabled={!formData.company} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:bg-slate-100 disabled:cursor-not-allowed">
+                  <option value="">{formData.company ? 'Select Warehouse' : 'Select company first...'}</option>
                   {warehouseOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
