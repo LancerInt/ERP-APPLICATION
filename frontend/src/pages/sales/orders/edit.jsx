@@ -70,6 +70,7 @@ export default function EditSalesOrder() {
           customer_po_reference: so.customer_po_reference || '',
           required_ship_date: so.required_ship_date || '',
           credit_terms: so.credit_terms || '',
+          destination: so.destination || '',
           remarks: so.remarks || '',
         });
         const lines = (so.so_lines || []).map(l => ({
@@ -222,6 +223,7 @@ export default function EditSalesOrder() {
         credit_terms: formData.credit_terms || '',
         freight_terms: formData.freight_terms || '',
         required_ship_date: formData.required_ship_date || undefined,
+        destination: formData.destination || '',
         remarks: formData.remarks || '',
         so_lines: soLines
           .filter(l => l.product && l.quantity_ordered)

@@ -14,6 +14,7 @@ from .models import (
     SalesOrder,
     DispatchChallan,
     SalesInvoiceCheck,
+    SalesFreightDetail,
     FreightAdviceOutbound,
     ReceivableLedger,
 )
@@ -26,8 +27,14 @@ from .serializers import (
     DispatchChallanDetailSerializer,
     CreateUpdateDCSerializer,
     SalesInvoiceCheckSerializer,
+    SalesFreightDetailListSerializer,
+    SalesFreightDetailDetailSerializer,
+    CreateUpdateFreightDetailSerializer,
     FreightAdviceOutboundListSerializer,
     FreightAdviceOutboundDetailSerializer,
+    CreateUpdateFreightSerializer,
+    FreightPaymentSerializer,
+    FreightAttachmentSerializer,
     ReceivableLedgerListSerializer,
     ReceivableLedgerDetailSerializer,
 )
@@ -172,7 +179,10 @@ class SalesOrderViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
-        """Approve sales order. DC can be created manually afterwards."""
+        """Approve sales order and auto-create Dispatch Challan."""
+        from django.db import transaction as db_transaction
+        from .models import DispatchChallan, DCLine
+
         sales_order = self.get_object()
 
         try:
@@ -180,12 +190,39 @@ class SalesOrderViewSet(viewsets.ModelViewSet):
         except (AttributeError, Exception):
             approved_by = None
 
-        SalesOrderService.approve_sales_order(sales_order, approved_by)
+        with db_transaction.atomic():
+            SalesOrderService.approve_sales_order(sales_order, approved_by)
+
+            # Auto-create DC from SO lines
+            so_lines = sales_order.so_lines.select_related('product').all()
+            dc_no = ''
+            dc_id = ''
+            if so_lines.exists():
+                dc_no = DispatchService._generate_dc_number()
+                dc = DispatchChallan.objects.create(
+                    dc_no=dc_no,
+                    warehouse=sales_order.warehouse,
+                    status='DRAFT',
+                    created_by=request.user,
+                )
+                for so_line in so_lines:
+                    pending = so_line.get_pending_qty()
+                    if pending > 0:
+                        DCLine.objects.create(
+                            dc=dc,
+                            product=so_line.product,
+                            quantity_dispatched=pending,
+                            uom=so_line.uom,
+                            linked_so_line=so_line,
+                        )
+                dc_id = str(dc.id)
 
         return Response(
             {
-                'detail': 'Sales order approved. You can now create Dispatch Challans.',
+                'detail': f'Sales order approved. DC {dc_no} created.',
                 'so_no': sales_order.so_no,
+                'dc_no': dc_no,
+                'dc_id': dc_id,
             },
             status=status.HTTP_200_OK
         )
@@ -584,6 +621,7 @@ body {{ font-family: "Segoe UI", Arial, sans-serif; font-size: 9px; color: #1a1a
             'company_name': so.company.legal_name if so.company else '',
             'warehouse': str(so.warehouse.id) if so.warehouse else '',
             'warehouse_name': so.warehouse.name if so.warehouse else '',
+            'destination': so.destination or '',
             'lines': result,
         })
 
@@ -743,56 +781,173 @@ class SalesInvoiceCheckViewSet(viewsets.ModelViewSet):
         )
 
 
+class SalesFreightDetailViewSet(viewsets.ModelViewSet):
+    """
+    Freight Details ViewSet — parent entry for outward freight.
+    """
+    queryset = SalesFreightDetail.objects.all()
+    permission_classes = [permissions.IsAuthenticated, HasModulePermission]
+    module_name = 'Freight Advice'
+    filterset_fields = ['company', 'factory', 'status', 'customer', 'transporter']
+    search_fields = ['freight_no', 'lorry_no', 'destination']
+    ordering_fields = ['freight_date', 'status', 'total_freight']
+    ordering = ['-freight_date']
+
+    def get_queryset(self):
+        return (
+            SalesFreightDetail.objects
+            .select_related('company', 'factory', 'customer', 'transporter')
+            .prefetch_related('dc_links__dc')
+            .filter(is_active=True)
+        )
+
+    def get_serializer_class(self):
+        if self.action in ('create', 'update', 'partial_update'):
+            return CreateUpdateFreightDetailSerializer
+        elif self.action == 'retrieve':
+            return SalesFreightDetailDetailSerializer
+        return SalesFreightDetailListSerializer
+
+    @action(detail=False, methods=['get'], url_path='available-dcs')
+    def available_dcs(self, request):
+        """Get DCs not yet linked to any Freight Detail.
+        Optional: ?customer_id=xxx to filter by customer (via SO link)."""
+        from .models import FreightDetailDCLink, DCLine
+        linked_dc_ids = FreightDetailDCLink.objects.values_list('dc_id', flat=True).distinct()
+        qs = DispatchChallan.objects.filter(is_active=True).exclude(id__in=linked_dc_ids)
+
+        # Filter by customer if provided (customer comes from linked SO)
+        customer_id = request.query_params.get('customer_id')
+        if customer_id:
+            # Find SO line IDs for this customer's SOs
+            from .models import SalesOrder
+            customer_so_ids = SalesOrder.objects.filter(
+                customer_id=customer_id
+            ).values_list('id', flat=True)
+            # Find DC IDs that have lines linked to those SOs
+            customer_dc_ids = DCLine.objects.filter(
+                linked_so_line__so_id__in=customer_so_ids
+            ).values_list('dc_id', flat=True).distinct()
+            qs = qs.filter(id__in=customer_dc_ids)
+
+        available = qs.values('id', 'dc_no', 'invoice_no', 'warehouse__name')
+        return Response([
+            {'id': str(dc['id']), 'dc_no': dc['dc_no'], 'invoice_no': dc['invoice_no'] or '', 'warehouse_name': dc['warehouse__name'] or ''}
+            for dc in available
+        ])
+
+
 class FreightAdviceOutboundViewSet(viewsets.ModelViewSet):
     """
-    ViewSet for outbound freight advice.
-    Manages freight costs and payment schedules.
+    Outward Freight ViewSet.
+    Full CRUD + payment management + attachments.
     """
 
     queryset = FreightAdviceOutbound.objects.all()
     permission_classes = [permissions.IsAuthenticated, HasModulePermission]
     module_name = 'Freight Advice'
     filterset_fields = ['dispatch_challan', 'transporter', 'status']
-    search_fields = ['advice_no']
-    ordering_fields = ['created_date', 'status']
+    search_fields = ['advice_no', 'customer_name', 'lorry_no']
+    ordering_fields = ['created_date', 'freight_date', 'status', 'payable_amount']
     ordering = ['-created_date']
 
     def get_queryset(self):
         return (
             FreightAdviceOutbound.objects
-            .select_related('dispatch_challan', 'transporter', 'created_by')
-            .prefetch_related('payment_schedules')
+            .select_related('dispatch_challan__warehouse__company', 'transporter', 'created_by')
+            .prefetch_related('dc_links__dc', 'payments', 'attachments')
             .filter(is_active=True)
         )
 
     def get_serializer_class(self):
-        if self.action == 'retrieve':
+        if self.action in ('create', 'update', 'partial_update'):
+            return CreateUpdateFreightSerializer
+        elif self.action == 'retrieve':
             return FreightAdviceOutboundDetailSerializer
         return FreightAdviceOutboundListSerializer
 
-    @action(detail=True, methods=['post'])
-    def approve(self, request, pk=None):
-        """Approve freight advice"""
-        advice = self.get_object()
+    # --- Payment CRUD ---
+    @action(detail=True, methods=['post'], url_path='add-payment')
+    def add_payment(self, request, pk=None):
+        """Add a payment entry to this freight."""
+        from .models import FreightPayment
+        freight = self.get_object()
+        serializer = FreightPaymentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
 
-        FreightService.approve_freight_advice(advice)
+        amount = serializer.validated_data['amount_paid']
+        if amount > freight.balance:
+            raise ValidationError(
+                f'Payment amount ({amount}) exceeds balance ({freight.balance}).'
+            )
 
+        payment = FreightPayment.objects.create(
+            freight=freight,
+            created_by=request.user,
+            **serializer.validated_data
+        )
+        freight.update_payment_status()
         return Response(
-            {'detail': 'Freight advice approved'},
-            status=status.HTTP_200_OK
+            FreightPaymentSerializer(payment).data,
+            status=status.HTTP_201_CREATED
         )
 
-    @action(detail=True, methods=['post'])
-    def mark_paid(self, request, pk=None):
-        """Mark freight advice as paid"""
-        advice = self.get_object()
+    @action(detail=True, methods=['get'], url_path='payments')
+    def list_payments(self, request, pk=None):
+        """List all payments for this freight."""
+        freight = self.get_object()
+        payments = freight.payments.all()
+        return Response(FreightPaymentSerializer(payments, many=True).data)
 
-        FreightService.mark_freight_paid(advice)
+    @action(detail=True, methods=['delete'], url_path='delete-payment/(?P<payment_id>[^/.]+)')
+    def delete_payment(self, request, pk=None, payment_id=None):
+        """Delete a payment entry and recalculate."""
+        from .models import FreightPayment
+        freight = self.get_object()
+        try:
+            payment = freight.payments.get(id=payment_id)
+        except FreightPayment.DoesNotExist:
+            raise ValidationError('Payment not found.')
+        payment.delete()
+        freight.update_payment_status()
+        return Response({'detail': 'Payment deleted'}, status=status.HTTP_200_OK)
 
-        return Response(
-            {'detail': 'Freight advice marked paid'},
-            status=status.HTTP_200_OK
+    # --- Attachment CRUD ---
+    @action(detail=True, methods=['post'], url_path='add-attachment')
+    def add_attachment(self, request, pk=None):
+        """Upload an attachment to this freight."""
+        from .models import FreightAttachment
+        freight = self.get_object()
+        serializer = FreightAttachmentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        attachment = FreightAttachment.objects.create(
+            freight=freight, **serializer.validated_data
         )
+        return Response(
+            FreightAttachmentSerializer(attachment).data,
+            status=status.HTTP_201_CREATED
+        )
+
+    @action(detail=True, methods=['delete'], url_path='delete-attachment/(?P<attachment_id>[^/.]+)')
+    def delete_attachment(self, request, pk=None, attachment_id=None):
+        """Delete an attachment."""
+        from .models import FreightAttachment
+        freight = self.get_object()
+        try:
+            att = freight.attachments.get(id=attachment_id)
+        except FreightAttachment.DoesNotExist:
+            raise ValidationError('Attachment not found.')
+        att.delete()
+        return Response({'detail': 'Attachment deleted'}, status=status.HTTP_200_OK)
+
+    # --- Status ---
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        """Cancel freight advice."""
+        freight = self.get_object()
+        freight.status = 'CANCELLED'
+        freight.save(update_fields=['status', 'updated_at'])
+        return Response({'detail': 'Freight cancelled'}, status=status.HTTP_200_OK)
 
 
 class ReceivableLedgerViewSet(viewsets.ReadOnlyModelViewSet):

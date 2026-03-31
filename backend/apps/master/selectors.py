@@ -181,11 +181,12 @@ def get_customers_for_warehouse(warehouse):
 def get_price_lists_for_customer(customer):
     """
     Get all price lists available for a customer.
+    Accepts: customer model instance, int ID, UUID, or string UUID.
     """
-    if isinstance(customer, int):
-        customer_id = customer
-    else:
+    if hasattr(customer, 'id'):
         customer_id = customer.id
+    else:
+        customer_id = customer
 
     queryset = PriceList.objects.filter(
         Q(customer_id=customer_id) | Q(customer__isnull=True),

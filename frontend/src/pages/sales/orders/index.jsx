@@ -119,6 +119,10 @@ export default function SalesOrderList() {
     },
   ];
 
+  // Build unique warehouse list from data
+  const warehouseFilterOptions = [...new Set((data || []).map(i => i.warehouse_name).filter(Boolean))]
+    .sort().map(w => ({ value: w, label: w }));
+
   const filterOptions = [
     {
       key: 'approval_status',
@@ -132,6 +136,11 @@ export default function SalesOrderList() {
         { value: 'CLOSED', label: 'Closed' },
       ],
     },
+    {
+      key: 'warehouse_name',
+      label: 'Warehouse',
+      options: warehouseFilterOptions,
+    },
   ];
 
   const filteredData = (data || []).filter((item) => {
@@ -141,7 +150,8 @@ export default function SalesOrderList() {
       (item.customer_name || '').toLowerCase().includes(term) ||
       (item.warehouse_name || '').toLowerCase().includes(term);
     const matchesStatus = !activeFilters.approval_status || item.approval_status === activeFilters.approval_status;
-    return matchesSearch && matchesStatus;
+    const matchesWarehouse = !activeFilters.warehouse_name || item.warehouse_name === activeFilters.warehouse_name;
+    return matchesSearch && matchesStatus && matchesWarehouse;
   });
 
   const handleSort = (field, order) => {

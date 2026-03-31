@@ -189,6 +189,7 @@ class SalesOrder(BaseModel):
     )
     so_date = models.DateField(auto_now_add=True, db_index=True)
     required_ship_date = models.DateField(null=True, blank=True)
+    destination = models.CharField(max_length=255, blank=True, default='', help_text="Delivery destination")
     remarks = models.TextField(blank=True, default='')
     approval_status = models.CharField(
         max_length=20,
@@ -385,6 +386,8 @@ class DispatchChallan(BaseModel):
         blank=True,
         validators=[MinValueValidator(0)]
     )
+    invoice_no = models.CharField(max_length=100, blank=True, default='', db_index=True)
+    invoice_date = models.DateField(null=True, blank=True)
     lorry_no = models.CharField(max_length=50, blank=True, default='')
     driver_contact = models.CharField(max_length=20, blank=True, default='')
     status = models.CharField(
@@ -458,6 +461,12 @@ class DCLine(BaseModel):
         null=True,
         blank=True
     )
+    noa = models.IntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+        help_text="Number of Articles/Packages"
+    )
     weight = models.DecimalField(
         max_digits=15,
         decimal_places=4,
@@ -471,7 +480,7 @@ class DCLine(BaseModel):
         verbose_name_plural = "DC Lines"
 
     def __str__(self):
-        return f"DC-{self.dc.dc_no}: {self.product.sku}"
+        return f"DC-{self.dc.dc_no}: {self.product.product_name}"
 
 
 class DeliveryLocation(BaseModel):
@@ -579,6 +588,112 @@ class SalesInvoiceCheck(BaseModel):
         self.save(update_fields=['acceptance_timestamp', 'accepted_by', 'updated_at'])
 
 
+class SalesFreightDetail(BaseModel):
+    """
+    Sales Freight Details — parent entry for outward freight.
+    Captures basic freight info, DC mapping, customer, transporter details.
+    Outward Freight references this via freight_no.
+    """
+
+    FREIGHT_TYPE_CHOICES = [
+        ('FULL_LOAD', 'Full Load'),
+        ('PART_LOAD', 'Part Load'),
+        ('LOCAL', 'Local'),
+        ('EXPRESS', 'Express'),
+    ]
+
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('IN_PROGRESS', 'In Progress'),
+        ('COMPLETED', 'Completed'),
+        ('CANCELLED', 'Cancelled'),
+    ]
+
+    freight_no = models.CharField(
+        max_length=50, unique=True, db_index=True,
+        help_text="Auto-generated Freight Detail number"
+    )
+    freight_date = models.DateField(db_index=True)
+    company = models.ForeignKey(
+        'core.Company', on_delete=models.PROTECT, related_name='freight_details'
+    )
+    factory = models.ForeignKey(
+        'core.Warehouse', on_delete=models.PROTECT, related_name='freight_details'
+    )
+    customer = models.ForeignKey(
+        'master.Customer', on_delete=models.PROTECT, related_name='freight_details',
+        null=True, blank=True
+    )
+    transporter = models.ForeignKey(
+        'master.Transporter', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='sales_freight_details'
+    )
+    freight_type = models.CharField(max_length=20, choices=FREIGHT_TYPE_CHOICES, blank=True, default='')
+    lorry_no = models.CharField(max_length=50, blank=True, default='')
+    total_quantity = models.DecimalField(
+        max_digits=15, decimal_places=4, default=0, validators=[MinValueValidator(0)]
+    )
+    quantity_uom = models.CharField(max_length=20, blank=True, default='MTS')
+    freight_per_ton = models.DecimalField(
+        max_digits=18, decimal_places=2, default=0, validators=[MinValueValidator(0)]
+    )
+    total_freight = models.DecimalField(
+        max_digits=18, decimal_places=2, default=0, validators=[MinValueValidator(0)]
+    )
+    freight_paid = models.DecimalField(
+        max_digits=18, decimal_places=2, default=0, validators=[MinValueValidator(0)]
+    )
+    balance_freight = models.DecimalField(
+        max_digits=18, decimal_places=2, default=0, validators=[MinValueValidator(0)]
+    )
+    destination = models.CharField(max_length=255, blank=True, default='')
+    destination_state = models.CharField(max_length=100, blank=True, default='')
+    decision_box = models.BooleanField(default=False)
+    remarks = models.TextField(blank=True, default='')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING', db_index=True)
+
+    class Meta:
+        db_table = 'sales_freight_detail'
+        ordering = ['-freight_date', '-created_at']
+        indexes = [
+            models.Index(fields=['company', '-freight_date']),
+            models.Index(fields=['status', '-freight_date']),
+        ]
+
+    def __str__(self):
+        return f"FD-{self.freight_no}"
+
+    def update_balance(self):
+        """Recalculate balance from total and paid."""
+        self.balance_freight = max(Decimal('0'), self.total_freight - self.freight_paid)
+        self.save(update_fields=['balance_freight', 'updated_at'])
+
+
+class FreightDetailDCLink(BaseModel):
+    """Links DCs to a Freight Detail entry with product/qty details."""
+    freight_detail = models.ForeignKey(
+        SalesFreightDetail, on_delete=models.CASCADE, related_name='dc_links'
+    )
+    dc = models.ForeignKey(
+        DispatchChallan, on_delete=models.PROTECT, related_name='freight_detail_links'
+    )
+    product = models.ForeignKey(
+        'master.Product', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='freight_detail_links'
+    )
+    quantity = models.DecimalField(
+        max_digits=15, decimal_places=4, default=0, validators=[MinValueValidator(0)]
+    )
+    invoice_no = models.CharField(max_length=100, blank=True, default='')
+    destination = models.CharField(max_length=255, blank=True, default='')
+
+    class Meta:
+        ordering = ['freight_detail', 'created_at']
+
+    def __str__(self):
+        return f"{self.freight_detail.freight_no} - {self.dc.dc_no}"
+
+
 class FreightAdviceOutbound(BaseModel):
     """
     Outbound freight advice for dispatch.
@@ -595,10 +710,10 @@ class FreightAdviceOutbound(BaseModel):
     ]
 
     STATUS_CHOICES = [
-        ('DRAFT', 'Draft'),
-        ('PENDING_APPROVAL', 'Pending Approval'),
-        ('APPROVED', 'Approved'),
+        ('PENDING', 'Pending'),
+        ('PARTIALLY_PAID', 'Partially Paid'),
         ('PAID', 'Paid'),
+        ('CANCELLED', 'Cancelled'),
     ]
 
     advice_no = models.CharField(
@@ -611,6 +726,14 @@ class FreightAdviceOutbound(BaseModel):
         max_length=20,
         choices=DIRECTION_CHOICES,
         default='OUTBOUND'
+    )
+    freight_detail = models.ForeignKey(
+        SalesFreightDetail,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='outward_freights',
+        help_text="Link to Freight Detail parent entry"
     )
     dispatch_challan = models.ForeignKey(
         DispatchChallan,
@@ -677,10 +800,40 @@ class FreightAdviceOutbound(BaseModel):
         decimal_places=2,
         validators=[MinValueValidator(0)]
     )
+    # Additional cost fields
+    freight_per_ton = models.DecimalField(
+        max_digits=18, decimal_places=2, default=0, validators=[MinValueValidator(0)]
+    )
+    additional_freight = models.DecimalField(
+        max_digits=18, decimal_places=2, default=0, validators=[MinValueValidator(0)]
+    )
+    unloading_charges = models.DecimalField(
+        max_digits=18, decimal_places=2, default=0, validators=[MinValueValidator(0)]
+    )
+    less_amount = models.DecimalField(
+        max_digits=18, decimal_places=2, default=0, validators=[MinValueValidator(0)]
+    )
+    tds_less = models.DecimalField(
+        max_digits=18, decimal_places=2, default=0, validators=[MinValueValidator(0)]
+    )
+    # Freight info
+    customer_name = models.CharField(max_length=255, blank=True, default='')
+    freight_date = models.DateField(null=True, blank=True, db_index=True)
+    invoice_date = models.DateField(null=True, blank=True)
+    lorry_no = models.CharField(max_length=50, blank=True, default='')
+    destination = models.CharField(max_length=255, blank=True, default='')
+    remarks = models.TextField(blank=True, default='')
+    # Payment tracking
+    total_paid = models.DecimalField(
+        max_digits=18, decimal_places=2, default=0, validators=[MinValueValidator(0)]
+    )
+    balance = models.DecimalField(
+        max_digits=18, decimal_places=2, default=0, validators=[MinValueValidator(0)]
+    )
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
-        default='DRAFT',
+        default='PENDING',
         db_index=True
     )
 
@@ -695,23 +848,42 @@ class FreightAdviceOutbound(BaseModel):
         return f"Freight-{self.advice_no}"
 
     def calculate_payable(self) -> Decimal:
-        """Calculate total payable amount"""
+        """Calculate total payable: base - discount + loads + additional - less - tds"""
         return (
             self.base_amount
             - self.discount
             + self.loading_wages_amount
             + self.unloading_wages_amount
+            + self.additional_freight
+            + self.unloading_charges
+            - self.less_amount
+            - self.tds_less
         )
 
-    def approve(self):
-        """Approve freight advice"""
-        self.status = 'APPROVED'
-        self.save(update_fields=['status', 'updated_at'])
+    def get_total_paid(self) -> Decimal:
+        """Sum of all payment entries"""
+        return self.payments.aggregate(
+            total=models.Sum('amount_paid')
+        )['total'] or Decimal('0')
 
-    def mark_paid(self):
-        """Mark freight advice as paid"""
-        self.status = 'PAID'
-        self.save(update_fields=['status', 'updated_at'])
+    def update_payment_status(self):
+        """Recalculate paid/balance and auto-update status"""
+        self.total_paid = self.get_total_paid()
+        self.payable_amount = self.calculate_payable()
+        self.balance = self.payable_amount - self.total_paid
+        if self.balance < 0:
+            self.balance = Decimal('0')
+        if self.status == 'CANCELLED':
+            pass  # Don't change cancelled status
+        elif self.total_paid <= 0:
+            self.status = 'PENDING'
+        elif self.total_paid >= self.payable_amount:
+            self.status = 'PAID'
+        else:
+            self.status = 'PARTIALLY_PAID'
+        self.save(update_fields=[
+            'total_paid', 'payable_amount', 'balance', 'status', 'updated_at'
+        ])
 
 
 class OutboundPaymentSchedule(BaseModel):
@@ -750,6 +922,85 @@ class OutboundPaymentSchedule(BaseModel):
 
     def __str__(self):
         return f"Payment: {self.advice.advice_no} Due {self.due_date}"
+
+
+class FreightDCLink(BaseModel):
+    """Links Dispatch Challans to a Freight Advice for multi-DC freight."""
+    freight = models.ForeignKey(
+        FreightAdviceOutbound, on_delete=models.CASCADE, related_name='dc_links'
+    )
+    dc = models.ForeignKey(
+        DispatchChallan, on_delete=models.PROTECT, related_name='freight_links'
+    )
+    invoice_no = models.CharField(max_length=100, blank=True, default='')
+    destination = models.CharField(max_length=255, blank=True, default='')
+
+    class Meta:
+        ordering = ['freight', 'created_at']
+        unique_together = [['freight', 'dc']]
+
+    def __str__(self):
+        return f"{self.freight.advice_no} - {self.dc.dc_no}"
+
+
+class FreightPayment(BaseModel):
+    """
+    Individual payment entry against a Freight Advice.
+    Supports partial/multiple payments (installments).
+    """
+    PAYMENT_MODE_CHOICES = [
+        ('CASH', 'Cash'),
+        ('BANK', 'Bank Transfer'),
+        ('UPI', 'UPI'),
+        ('CHEQUE', 'Cheque'),
+        ('NEFT', 'NEFT'),
+        ('RTGS', 'RTGS'),
+        ('OTHER', 'Other'),
+    ]
+
+    freight = models.ForeignKey(
+        FreightAdviceOutbound, on_delete=models.CASCADE, related_name='payments'
+    )
+    payment_date = models.DateField(db_index=True)
+    amount_paid = models.DecimalField(
+        max_digits=18, decimal_places=2, validators=[MinValueValidator(Decimal('0.01'))]
+    )
+    payment_mode = models.CharField(max_length=20, choices=PAYMENT_MODE_CHOICES)
+    reference_no = models.CharField(max_length=100, blank=True, default='')
+    remarks = models.TextField(blank=True, default='')
+
+    class Meta:
+        ordering = ['freight', 'payment_date']
+        indexes = [
+            models.Index(fields=['freight', 'payment_date']),
+        ]
+
+    def __str__(self):
+        return f"{self.freight.advice_no} - {self.amount_paid} on {self.payment_date}"
+
+
+class FreightAttachment(BaseModel):
+    """File attachments for freight advice."""
+    ATTACHMENT_TYPE_CHOICES = [
+        ('OUTWARD_GATEPASS', 'Outward Gatepass'),
+        ('FREIGHT_LETTER', 'Freight Letter'),
+        ('IMAGE', 'Image'),
+        ('PDF', 'PDF Attachment'),
+        ('OTHER', 'Other'),
+    ]
+
+    freight = models.ForeignKey(
+        FreightAdviceOutbound, on_delete=models.CASCADE, related_name='attachments'
+    )
+    attachment_type = models.CharField(max_length=30, choices=ATTACHMENT_TYPE_CHOICES)
+    file = models.FileField(upload_to='freight/attachments/%Y/%m/%d/')
+    file_name = models.CharField(max_length=255, blank=True, default='')
+
+    class Meta:
+        ordering = ['freight', 'attachment_type']
+
+    def __str__(self):
+        return f"{self.freight.advice_no} - {self.get_attachment_type_display()}"
 
 
 class ReceivableLedger(BaseModel):

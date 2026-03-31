@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
-  ArrowLeft, CheckCircle, XCircle, Edit3, Trash2, FileText, Truck, Package,
+  ArrowLeft, CheckCircle, Edit3, Trash2, FileText, Truck, Package,
 } from 'lucide-react';
 import MainLayout from '../../../components/layout/MainLayout';
 import StatusBadge from '../../../components/common/StatusBadge';
@@ -202,6 +202,9 @@ export default function DispatchChallanDetail() {
                     </button>
                   ) : '-'}
                 </InfoField>
+                <InfoField label="Destination">{dc.so_destination || '-'}</InfoField>
+                <InfoField label="Invoice No">{dc.invoice_no || '-'}</InfoField>
+                <InfoField label="Invoice Date">{formatDate(dc.invoice_date)}</InfoField>
               </div>
             </div>
 
@@ -238,6 +241,7 @@ export default function DispatchChallanDetail() {
                         <th className="text-left py-3 px-3 text-xs font-medium text-slate-500 uppercase">UOM</th>
                         <th className="text-right py-3 px-3 text-xs font-medium text-slate-500 uppercase">Pending Qty</th>
                         <th className="text-left py-3 px-3 text-xs font-medium text-slate-500 uppercase">Batch</th>
+                        <th className="text-right py-3 px-3 text-xs font-medium text-slate-500 uppercase">NOA</th>
                         <th className="text-left py-3 px-3 text-xs font-medium text-slate-500 uppercase">SO Ref</th>
                       </tr>
                     </thead>
@@ -255,6 +259,7 @@ export default function DispatchChallanDetail() {
                           <td className="py-3 px-3 text-slate-600">{line.uom || '-'}</td>
                           <td className="py-3 px-3 text-right font-medium text-orange-600">{fmtQty(line.pending_qty)}</td>
                           <td className="py-3 px-3 text-slate-500">{line.batch || '-'}</td>
+                          <td className="py-3 px-3 text-right text-slate-600">{line.noa || '-'}</td>
                           <td className="py-3 px-3">
                             {line.so_no ? (
                               <span className="text-xs text-blue-600">{line.so_no} / L{line.so_line_no}</span>

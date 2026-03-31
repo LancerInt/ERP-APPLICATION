@@ -52,6 +52,13 @@ export default function DispatchChallanList() {
       width: '140px',
     },
     {
+      field: 'invoice_no',
+      header: 'Invoice No',
+      sortable: true,
+      width: '120px',
+      render: (value) => value || '-',
+    },
+    {
       field: 'total_dispatch_qty',
       header: 'Total Qty',
       sortable: true,
@@ -102,6 +109,9 @@ export default function DispatchChallanList() {
     },
   ];
 
+  const warehouseFilterOptions = [...new Set((data || []).map(i => i.warehouse_name).filter(Boolean))]
+    .sort().map(w => ({ value: w, label: w }));
+
   const filterOptions = [
     {
       key: 'status',
@@ -113,15 +123,22 @@ export default function DispatchChallanList() {
         { value: 'CLOSED', label: 'Closed' },
       ],
     },
+    {
+      key: 'warehouse_name',
+      label: 'Warehouse',
+      options: warehouseFilterOptions,
+    },
   ];
 
   const filteredData = (data || []).filter((item) => {
     const term = searchTerm.toLowerCase();
     const matchesSearch = !term ||
       (item.dc_no || '').toLowerCase().includes(term) ||
-      (item.warehouse_name || '').toLowerCase().includes(term);
+      (item.warehouse_name || '').toLowerCase().includes(term) ||
+      (item.invoice_no || '').toLowerCase().includes(term);
     const matchesStatus = !activeFilters.status || item.status === activeFilters.status;
-    return matchesSearch && matchesStatus;
+    const matchesWarehouse = !activeFilters.warehouse_name || item.warehouse_name === activeFilters.warehouse_name;
+    return matchesSearch && matchesStatus && matchesWarehouse;
   });
 
   return (

@@ -61,6 +61,7 @@ export default function CreateSalesOrder() {
     customer_po_reference: '',
     required_ship_date: '',
     credit_terms: 'NET_15',
+    destination: '',
     remarks: '',
   });
   const [soLines, setSoLines] = useState([{ ...emptySOLine }]);
@@ -111,24 +112,9 @@ export default function CreateSalesOrder() {
     apiClient.get(`/api/price-lists/for_customer/?customer_id=${formData.customer}`)
       .then(res => {
         const list = res.data?.results || res.data || [];
-        if (list.length > 0) {
-          setFilteredPriceLists(list.map(pl => ({ value: pl.id, label: pl.price_list_id })));
-        } else {
-          return apiClient.get(`/api/price-lists/?company=${formData.company}&status=ACTIVE`)
-            .then(res2 => {
-              const list2 = res2.data?.results || res2.data || [];
-              setFilteredPriceLists(list2.map(pl => ({ value: pl.id, label: pl.price_list_id })));
-            });
-        }
+        setFilteredPriceLists(list.map(pl => ({ value: pl.id, label: pl.price_list_id })));
       })
-      .catch(() => {
-        apiClient.get(`/api/price-lists/?company=${formData.company}&status=ACTIVE`)
-          .then(res => {
-            const list = res.data?.results || res.data || [];
-            setFilteredPriceLists(list.map(pl => ({ value: pl.id, label: pl.price_list_id })));
-          })
-          .catch(() => setFilteredPriceLists([]));
-      });
+      .catch(() => setFilteredPriceLists([]));
     setFormData(prev => ({ ...prev, price_list: '' }));
     setPriceLines([]);
   }, [formData.customer]);
@@ -310,6 +296,7 @@ export default function CreateSalesOrder() {
         credit_terms: formData.credit_terms || '',
         freight_terms: formData.freight_terms || '',
         required_ship_date: formData.required_ship_date || undefined,
+        destination: formData.destination || '',
         remarks: formData.remarks || '',
         so_lines: soLines
           .filter(l => l.product && l.quantity_ordered)
@@ -455,6 +442,10 @@ export default function CreateSalesOrder() {
                   <option value="NET_45">Net 45</option>
                   <option value="CUSTOM">Custom</option>
                 </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Destination</label>
+                <input type="text" name="destination" value={formData.destination} onChange={handleChange} className={inputClass} placeholder="Delivery destination" />
               </div>
             </div>
           </div>

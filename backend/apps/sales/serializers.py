@@ -12,8 +12,13 @@ from .models import (
     DCLine,
     DeliveryLocation,
     SalesInvoiceCheck,
+    SalesFreightDetail,
+    FreightDetailDCLink,
     FreightAdviceOutbound,
     OutboundPaymentSchedule,
+    FreightDCLink,
+    FreightPayment,
+    FreightAttachment,
     ReceivableLedger,
     ReminderDate,
 )
@@ -150,6 +155,7 @@ class SalesOrderListSerializer(serializers.ModelSerializer):
             'approval_status',
             'warehouse',
             'warehouse_name',
+            'destination',
             'total_amount',
         ]
         read_only_fields = ['id']
@@ -193,6 +199,7 @@ class SalesOrderDetailSerializer(serializers.ModelSerializer):
             'customer_po_reference',
             'so_date',
             'required_ship_date',
+            'destination',
             'remarks',
             'approval_status',
             'approved_by',
@@ -232,12 +239,14 @@ class CreateSalesOrderSerializer(serializers.ModelSerializer):
             'freight_terms',
             'customer_po_reference',
             'required_ship_date',
+            'destination',
             'remarks',
             'so_lines',
         ]
         extra_kwargs = {
             'so_no': {'required': False, 'allow_blank': True},
             'price_list': {'required': False, 'allow_null': True},
+            'destination': {'required': False, 'allow_blank': True},
             'credit_terms': {'required': False, 'allow_blank': True},
             'freight_terms': {'required': False, 'allow_blank': True},
             'customer_po_reference': {'required': False, 'allow_null': True},
@@ -309,6 +318,7 @@ class DCLineSerializer(serializers.ModelSerializer):
             'so_line_no',
             'quantity_ordered',
             'pending_qty',
+            'noa',
             'weight',
         ]
         read_only_fields = ['id', 'product_sku', 'product_name', 'product_category',
@@ -330,11 +340,12 @@ class DCLineWriteSerializer(serializers.ModelSerializer):
     """Serializer for creating/updating DC lines (nested inside DC)."""
     class Meta:
         model = DCLine
-        fields = ['product', 'batch', 'quantity_dispatched', 'uom', 'linked_so_line', 'weight']
+        fields = ['product', 'batch', 'quantity_dispatched', 'uom', 'linked_so_line', 'noa', 'weight']
         extra_kwargs = {
             'batch': {'required': False, 'allow_blank': True},
             'uom': {'required': False, 'allow_blank': True},
             'linked_so_line': {'required': False, 'allow_null': True},
+            'noa': {'required': False, 'allow_null': True},
             'weight': {'required': False, 'allow_null': True},
         }
 
@@ -347,12 +358,15 @@ class CreateUpdateDCSerializer(serializers.ModelSerializer):
     class Meta:
         model = DispatchChallan
         fields = [
-            'dc_no', 'warehouse', 'transporter', 'lorry_no', 'driver_contact',
+            'dc_no', 'warehouse', 'transporter', 'invoice_no', 'invoice_date',
+            'lorry_no', 'driver_contact',
             'freight_rate_type', 'freight_rate_value', 'dc_lines',
         ]
         extra_kwargs = {
             'dc_no': {'required': False, 'allow_blank': True},
             'transporter': {'required': False, 'allow_null': True},
+            'invoice_no': {'required': False, 'allow_blank': True},
+            'invoice_date': {'required': False, 'allow_null': True},
             'lorry_no': {'required': False, 'allow_blank': True},
             'driver_contact': {'required': False, 'allow_blank': True},
             'freight_rate_type': {'required': False, 'allow_blank': True},
@@ -469,6 +483,8 @@ class DispatchChallanListSerializer(serializers.ModelSerializer):
             'warehouse',
             'warehouse_name',
             'dispatch_date',
+            'invoice_no',
+            'invoice_date',
             'status',
             'total_dispatch_qty',
         ]
@@ -495,6 +511,7 @@ class DispatchChallanDetailSerializer(serializers.ModelSerializer):
     linked_so_id = serializers.SerializerMethodField()
     customer_name = serializers.SerializerMethodField()
     company_name = serializers.SerializerMethodField()
+    so_destination = serializers.SerializerMethodField()
 
     class Meta:
         model = DispatchChallan
@@ -506,6 +523,8 @@ class DispatchChallanDetailSerializer(serializers.ModelSerializer):
             'dispatch_date',
             'transporter',
             'transporter_name',
+            'invoice_no',
+            'invoice_date',
             'freight_rate_type',
             'freight_rate_value',
             'freight_amount_total',
@@ -520,6 +539,7 @@ class DispatchChallanDetailSerializer(serializers.ModelSerializer):
             'linked_so_id',
             'customer_name',
             'company_name',
+            'so_destination',
         ]
         read_only_fields = ['id', 'dc_no']
         extra_kwargs = {
@@ -557,6 +577,10 @@ class DispatchChallanDetailSerializer(serializers.ModelSerializer):
     def get_company_name(self, obj):
         so = self._get_linked_so(obj)
         return so.company.legal_name if so and so.company else None
+
+    def get_so_destination(self, obj):
+        so = self._get_linked_so(obj)
+        return so.destination if so else ''
 
 
 class SalesInvoiceCheckSerializer(serializers.ModelSerializer):
@@ -618,84 +642,322 @@ class OutboundPaymentScheduleSerializer(serializers.ModelSerializer):
         }
 
 
+class FreightDCLinkSerializer(serializers.ModelSerializer):
+    dc_no = serializers.CharField(source='dc.dc_no', read_only=True)
+
+    class Meta:
+        model = FreightDCLink
+        fields = ['id', 'dc', 'dc_no', 'invoice_no', 'destination']
+        read_only_fields = ['id']
+        extra_kwargs = {
+            'invoice_no': {'required': False, 'allow_blank': True},
+            'destination': {'required': False, 'allow_blank': True},
+        }
+
+
+class FreightPaymentSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.CharField(
+        source='created_by.get_full_name', read_only=True, default=''
+    )
+
+    class Meta:
+        model = FreightPayment
+        fields = [
+            'id', 'payment_date', 'amount_paid', 'payment_mode',
+            'reference_no', 'remarks', 'created_by_name', 'created_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'created_by_name']
+        extra_kwargs = {
+            'reference_no': {'required': False, 'allow_blank': True},
+            'remarks': {'required': False, 'allow_blank': True},
+        }
+
+
+class FreightAttachmentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FreightAttachment
+        fields = ['id', 'attachment_type', 'file', 'file_name', 'created_at']
+        read_only_fields = ['id', 'created_at']
+        extra_kwargs = {
+            'file_name': {'required': False, 'allow_blank': True},
+        }
+
+
 class FreightAdviceOutboundListSerializer(serializers.ModelSerializer):
-    transporter_name = serializers.CharField(source='transporter.name', read_only=True)
-    dc_number = serializers.CharField(source='dispatch_challan.dc_no', read_only=True)
+    transporter_name = serializers.CharField(source='transporter.name', read_only=True, default='')
+    company_name = serializers.CharField(source='dispatch_challan.warehouse.company.legal_name', read_only=True, default='')
+    dc_count = serializers.SerializerMethodField()
 
     class Meta:
         model = FreightAdviceOutbound
         fields = [
-            'id',
-            'advice_no',
-            'dc_number',
-            'transporter',
-            'transporter_name',
-            'freight_type',
-            'base_amount',
-            'payable_amount',
-            'status',
-            'created_date',
+            'id', 'advice_no', 'freight_date', 'customer_name',
+            'transporter', 'transporter_name', 'company_name',
+            'base_amount', 'payable_amount', 'total_paid', 'balance',
+            'status', 'lorry_no', 'destination', 'dc_count', 'created_date',
         ]
         read_only_fields = ['id']
-        extra_kwargs = {
-            'freight_type': {'required': False, 'allow_blank': True},
-            'status': {'required': False, 'allow_blank': True},
-        }
+
+    def get_dc_count(self, obj):
+        return obj.dc_links.count()
 
 
 class FreightAdviceOutboundDetailSerializer(serializers.ModelSerializer):
-    transporter_name = serializers.CharField(source='transporter.name', read_only=True)
-    created_by_name = serializers.CharField(
-        source='created_by.get_full_name',
-        read_only=True,
-        allow_null=True
-    )
-    payment_schedules = OutboundPaymentScheduleSerializer(many=True, read_only=True)
+    transporter_name = serializers.CharField(source='transporter.name', read_only=True, default='')
+    company_name = serializers.CharField(source='dispatch_challan.warehouse.company.legal_name', read_only=True, default='')
+    factory_name = serializers.CharField(source='dispatch_challan.warehouse.name', read_only=True, default='')
+    created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True, default='')
+    dc_links = FreightDCLinkSerializer(many=True, read_only=True)
+    payments = FreightPaymentSerializer(many=True, read_only=True)
+    attachments = FreightAttachmentSerializer(many=True, read_only=True)
     calculated_payable = serializers.SerializerMethodField()
 
     class Meta:
         model = FreightAdviceOutbound
         fields = [
-            'id',
-            'advice_no',
-            'direction',
-            'dispatch_challan',
-            'transporter',
-            'transporter_name',
-            'freight_type',
-            'created_by',
-            'created_by_name',
-            'created_date',
-            'base_amount',
-            'discount',
-            'loading_wages_amount',
-            'unloading_wages_amount',
-            'shipment_quantity',
-            'quantity_uom',
-            'cost_per_unit_calc',
-            'destination_state',
-            'payable_amount',
-            'status',
-            'payment_schedules',
-            'calculated_payable',
+            'id', 'advice_no', 'freight_detail', 'direction', 'dispatch_challan', 'transporter',
+            'transporter_name', 'company_name', 'factory_name',
+            'freight_type', 'created_by', 'created_by_name', 'created_date',
+            'freight_date', 'invoice_date', 'customer_name', 'lorry_no', 'destination',
+            'shipment_quantity', 'quantity_uom',
+            'base_amount', 'discount', 'loading_wages_amount', 'unloading_wages_amount',
+            'freight_per_ton', 'additional_freight', 'unloading_charges',
+            'less_amount', 'tds_less',
+            'payable_amount', 'total_paid', 'balance',
+            'status', 'remarks',
+            'dc_links', 'payments', 'attachments', 'calculated_payable',
         ]
-        read_only_fields = ['id', 'advice_no', 'created_date']
-        extra_kwargs = {
-            'direction': {'required': False, 'allow_blank': True},
-            'freight_type': {'required': False, 'allow_blank': True},
-            'created_by': {'required': False},
-            'discount': {'required': False},
-            'loading_wages_amount': {'required': False},
-            'unloading_wages_amount': {'required': False},
-            'shipment_quantity': {'required': False},
-            'quantity_uom': {'required': False, 'allow_blank': True},
-            'cost_per_unit_calc': {'required': False},
-            'destination_state': {'required': False, 'allow_blank': True},
-            'status': {'required': False, 'allow_blank': True},
-        }
+        read_only_fields = ['id', 'advice_no', 'created_date', 'total_paid', 'balance']
 
     def get_calculated_payable(self, obj):
         return str(obj.calculate_payable())
+
+
+class FreightDCLinkWriteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FreightDCLink
+        fields = ['dc', 'invoice_no', 'destination']
+        extra_kwargs = {
+            'invoice_no': {'required': False, 'allow_blank': True},
+            'destination': {'required': False, 'allow_blank': True},
+        }
+
+
+class CreateUpdateFreightSerializer(serializers.ModelSerializer):
+    """Create/Update Outward Freight with nested DC links."""
+    dc_links = FreightDCLinkWriteSerializer(many=True, required=False)
+
+    class Meta:
+        model = FreightAdviceOutbound
+        fields = [
+            'advice_no', 'freight_detail', 'dispatch_challan', 'transporter', 'freight_type',
+            'freight_date', 'invoice_date', 'customer_name', 'lorry_no', 'destination',
+            'shipment_quantity', 'quantity_uom',
+            'base_amount', 'discount', 'loading_wages_amount', 'unloading_wages_amount',
+            'freight_per_ton', 'additional_freight', 'unloading_charges',
+            'less_amount', 'tds_less', 'remarks',
+            'dc_links',
+        ]
+        extra_kwargs = {
+            'advice_no': {'required': False, 'allow_blank': True},
+            'freight_detail': {'required': False, 'allow_null': True},
+            'transporter': {'required': False, 'allow_null': True},
+            'freight_type': {'required': False, 'allow_blank': True},
+            'freight_date': {'required': False, 'allow_null': True},
+            'invoice_date': {'required': False, 'allow_null': True},
+            'customer_name': {'required': False, 'allow_blank': True},
+            'lorry_no': {'required': False, 'allow_blank': True},
+            'destination': {'required': False, 'allow_blank': True},
+            'shipment_quantity': {'required': False, 'allow_null': True},
+            'quantity_uom': {'required': False, 'allow_blank': True},
+            'discount': {'required': False},
+            'loading_wages_amount': {'required': False},
+            'unloading_wages_amount': {'required': False},
+            'freight_per_ton': {'required': False},
+            'additional_freight': {'required': False},
+            'unloading_charges': {'required': False},
+            'less_amount': {'required': False},
+            'tds_less': {'required': False},
+            'remarks': {'required': False, 'allow_blank': True},
+        }
+
+    @transaction.atomic
+    def create(self, validated_data):
+        dc_links_data = validated_data.pop('dc_links', [])
+        if not validated_data.get('advice_no'):
+            from .services import FreightService
+            validated_data['advice_no'] = FreightService._generate_advice_number()
+        validated_data['direction'] = 'OUTBOUND'
+        validated_data['payable_amount'] = Decimal('0')
+        freight = FreightAdviceOutbound.objects.create(**validated_data)
+        for link_data in dc_links_data:
+            FreightDCLink.objects.create(freight=freight, **link_data)
+        freight.update_payment_status()
+        return freight
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        dc_links_data = validated_data.pop('dc_links', None)
+        validated_data.pop('advice_no', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        if dc_links_data is not None:
+            instance.dc_links.all().delete()
+            for link_data in dc_links_data:
+                FreightDCLink.objects.create(freight=instance, **link_data)
+        instance.update_payment_status()
+        return instance
+
+
+# ========================
+# FREIGHT DETAIL SERIALIZERS
+# ========================
+
+class FreightDetailDCLinkSerializer(serializers.ModelSerializer):
+    dc_no = serializers.CharField(source='dc.dc_no', read_only=True)
+    product_name = serializers.CharField(source='product.product_name', read_only=True, default='')
+
+    class Meta:
+        model = FreightDetailDCLink
+        fields = ['id', 'dc', 'dc_no', 'product', 'product_name', 'quantity', 'invoice_no', 'destination']
+        read_only_fields = ['id']
+        extra_kwargs = {
+            'product': {'required': False, 'allow_null': True},
+            'quantity': {'required': False},
+            'invoice_no': {'required': False, 'allow_blank': True},
+            'destination': {'required': False, 'allow_blank': True},
+        }
+
+
+class FreightDetailDCLinkWriteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FreightDetailDCLink
+        fields = ['dc', 'product', 'quantity', 'invoice_no', 'destination']
+        extra_kwargs = {
+            'product': {'required': False, 'allow_null': True},
+            'quantity': {'required': False},
+            'invoice_no': {'required': False, 'allow_blank': True},
+            'destination': {'required': False, 'allow_blank': True},
+        }
+
+
+class SalesFreightDetailListSerializer(serializers.ModelSerializer):
+    company_name = serializers.CharField(source='company.legal_name', read_only=True)
+    factory_name = serializers.CharField(source='factory.name', read_only=True)
+    customer_name = serializers.CharField(source='customer.customer_name', read_only=True, default='')
+    transporter_name = serializers.CharField(source='transporter.name', read_only=True, default='')
+    dc_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SalesFreightDetail
+        fields = [
+            'id', 'freight_no', 'freight_date', 'company', 'company_name',
+            'factory', 'factory_name', 'customer_name', 'transporter_name',
+            'lorry_no', 'total_quantity', 'total_freight', 'freight_paid',
+            'balance_freight', 'destination', 'status', 'dc_count',
+        ]
+
+    def get_dc_count(self, obj):
+        return obj.dc_links.count()
+
+
+class SalesFreightDetailDetailSerializer(serializers.ModelSerializer):
+    company_name = serializers.CharField(source='company.legal_name', read_only=True)
+    factory_name = serializers.CharField(source='factory.name', read_only=True)
+    customer_name_display = serializers.CharField(source='customer.customer_name', read_only=True, default='')
+    transporter_name = serializers.CharField(source='transporter.name', read_only=True, default='')
+    dc_links = FreightDetailDCLinkSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = SalesFreightDetail
+        fields = [
+            'id', 'freight_no', 'freight_date', 'company', 'company_name',
+            'factory', 'factory_name', 'customer', 'customer_name_display',
+            'transporter', 'transporter_name', 'freight_type',
+            'lorry_no', 'total_quantity', 'quantity_uom',
+            'freight_per_ton', 'total_freight', 'freight_paid', 'balance_freight',
+            'destination', 'destination_state', 'decision_box',
+            'remarks', 'status', 'dc_links',
+        ]
+        read_only_fields = ['id', 'freight_no']
+
+
+class CreateUpdateFreightDetailSerializer(serializers.ModelSerializer):
+    dc_links = FreightDetailDCLinkWriteSerializer(many=True, required=False)
+
+    class Meta:
+        model = SalesFreightDetail
+        fields = [
+            'id', 'freight_no', 'freight_date', 'company', 'factory', 'customer',
+            'transporter', 'freight_type', 'lorry_no',
+            'total_quantity', 'quantity_uom', 'freight_per_ton',
+            'total_freight', 'freight_paid',
+            'destination', 'destination_state', 'decision_box',
+            'remarks', 'status', 'dc_links',
+        ]
+        read_only_fields = ['id']
+        extra_kwargs = {
+            'freight_no': {'required': False, 'allow_blank': True},
+            'customer': {'required': False, 'allow_null': True},
+            'transporter': {'required': False, 'allow_null': True},
+            'freight_type': {'required': False, 'allow_blank': True},
+            'lorry_no': {'required': False, 'allow_blank': True},
+            'total_quantity': {'required': False},
+            'quantity_uom': {'required': False, 'allow_blank': True},
+            'freight_per_ton': {'required': False},
+            'total_freight': {'required': False},
+            'freight_paid': {'required': False},
+            'destination': {'required': False, 'allow_blank': True},
+            'destination_state': {'required': False, 'allow_blank': True},
+            'remarks': {'required': False, 'allow_blank': True},
+            'status': {'required': False},
+        }
+
+    @transaction.atomic
+    def create(self, validated_data):
+        dc_links_data = validated_data.pop('dc_links', [])
+        if not validated_data.get('freight_no'):
+            from datetime import datetime
+            prefix = "FD"
+            date_part = datetime.now().strftime("%Y%m%d")
+            count = SalesFreightDetail.objects.filter(
+                freight_no__startswith=f"{prefix}-{date_part}"
+            ).count()
+            validated_data['freight_no'] = f"{prefix}-{date_part}-{count + 1:04d}"
+        # Auto-calculate total_quantity from DC links
+        total_qty = sum(Decimal(str(l.get('quantity', 0) or 0)) for l in dc_links_data)
+        if total_qty > 0:
+            validated_data['total_quantity'] = total_qty
+        # Calculate balance
+        total = validated_data.get('total_freight', Decimal('0')) or Decimal('0')
+        paid = validated_data.get('freight_paid', Decimal('0')) or Decimal('0')
+        validated_data['balance_freight'] = max(Decimal('0'), total - paid)
+        fd = SalesFreightDetail.objects.create(**validated_data)
+        for link_data in dc_links_data:
+            FreightDetailDCLink.objects.create(freight_detail=fd, **link_data)
+        return fd
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        dc_links_data = validated_data.pop('dc_links', None)
+        validated_data.pop('freight_no', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        if dc_links_data is not None:
+            instance.dc_links.all().delete()
+            for link_data in dc_links_data:
+                FreightDetailDCLink.objects.create(freight_detail=instance, **link_data)
+            # Auto-calculate total_quantity from DC links
+            total_qty = sum(Decimal(str(l.get('quantity', 0) or 0)) for l in dc_links_data)
+            if total_qty > 0:
+                instance.total_quantity = total_qty
+        instance.balance_freight = max(
+            Decimal('0'),
+            (instance.total_freight or Decimal('0')) - (instance.freight_paid or Decimal('0'))
+        )
+        instance.save()
+        return instance
 
 
 class ReminderDateSerializer(serializers.ModelSerializer):

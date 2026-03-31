@@ -25,7 +25,7 @@ const GOODS_SUB_TYPE_OPTIONS = [
 
 const emptyDCLine = {
   product_category: '', product: '', quantity_dispatched: '', uom: 'KG',
-  batch: '', weight: '', linked_so_line: null, so_qty: '', balance_qty: '',
+  batch: '', noa: '', weight: '', linked_so_line: null, so_qty: '', balance_qty: '',
 };
 
 export default function EditDispatchChallan() {
@@ -39,8 +39,8 @@ export default function EditDispatchChallan() {
   const [errors, setErrors] = useState({});
 
   const [formData, setFormData] = useState({
-    dc_no: '', warehouse: '', transporter: '', lorry_no: '',
-    driver_contact: '', freight_rate_type: '', freight_rate_value: '',
+    dc_no: '', warehouse: '', transporter: '', invoice_no: '', invoice_date: '',
+    lorry_no: '', driver_contact: '', freight_rate_type: '', freight_rate_value: '',
   });
   const [dcLines, setDcLines] = useState([{ ...emptyDCLine }]);
   const [linkedSONo, setLinkedSONo] = useState('');
@@ -55,6 +55,8 @@ export default function EditDispatchChallan() {
           dc_no: d.dc_no || '',
           warehouse: d.warehouse || '',
           transporter: d.transporter || '',
+          invoice_no: d.invoice_no || '',
+          invoice_date: d.invoice_date || '',
           lorry_no: d.lorry_no || '',
           driver_contact: d.driver_contact || '',
           freight_rate_type: d.freight_rate_type || '',
@@ -76,6 +78,7 @@ export default function EditDispatchChallan() {
             quantity_dispatched: l.quantity_dispatched || '',
             uom: l.uom || 'KG',
             batch: l.batch || '',
+            noa: l.noa || '',
             weight: l.weight || '',
             linked_so_line: l.linked_so_line || null,
             so_qty: soQty > 0 ? String(soQty) : '',
@@ -172,6 +175,8 @@ export default function EditDispatchChallan() {
       const payload = {
         warehouse: formData.warehouse,
         transporter: formData.transporter || null,
+        invoice_no: formData.invoice_no || '',
+        invoice_date: formData.invoice_date || null,
         lorry_no: formData.lorry_no || '',
         driver_contact: formData.driver_contact || '',
         freight_rate_type: formData.freight_rate_type || '',
@@ -181,6 +186,7 @@ export default function EditDispatchChallan() {
           quantity_dispatched: l.quantity_dispatched,
           uom: l.uom || 'KG',
           batch: l.batch || '',
+          noa: l.noa ? parseInt(l.noa) : null,
           weight: l.weight || null,
           linked_so_line: l.linked_so_line || null,
         })),
@@ -233,6 +239,21 @@ export default function EditDispatchChallan() {
                   {warehouseOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
                 {errors.warehouse && <p className="text-xs text-red-500 mt-1">{errors.warehouse}</p>}
+              </div>
+            </div>
+          </div>
+
+          {/* Invoice Details */}
+          <div>
+            <h3 className="text-lg font-semibold text-slate-800 mb-4 pb-2 border-b">Invoice Details</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Invoice No</label>
+                <input type="text" name="invoice_no" value={formData.invoice_no} onChange={handleChange} className={inputClass} placeholder="Enter invoice number" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Invoice Date</label>
+                <input type="date" name="invoice_date" value={formData.invoice_date} onChange={handleChange} className={inputClass} />
               </div>
             </div>
           </div>
@@ -299,6 +320,7 @@ export default function EditDispatchChallan() {
                     <th className="text-right px-3 py-2 font-medium text-blue-700">Qty to Dispatch <span className="text-red-500">*</span></th>
                     <th className="text-left px-3 py-2 font-medium text-slate-600">UOM</th>
                     <th className="text-left px-3 py-2 font-medium text-slate-600">Batch</th>
+                    <th className="text-right px-3 py-2 font-medium text-slate-600">NOA</th>
                     <th className="text-right px-3 py-2 font-medium text-slate-600">Weight</th>
                     <th className="px-3 py-2"></th>
                   </tr>
@@ -345,6 +367,9 @@ export default function EditDispatchChallan() {
                         </td>
                         <td className="px-3 py-2">
                           <input type="text" value={line.batch} onChange={(e) => handleLineChange(index, 'batch', e.target.value)} className={inputClass} style={{ minWidth: '90px' }} placeholder="Batch" />
+                        </td>
+                        <td className="px-3 py-2">
+                          <input type="number" step="1" min="0" value={line.noa} onChange={(e) => handleLineChange(index, 'noa', e.target.value)} className={inputClass} style={{ minWidth: '60px' }} placeholder="0" />
                         </td>
                         <td className="px-3 py-2">
                           <input type="number" step="0.01" min="0" value={line.weight} onChange={(e) => handleLineChange(index, 'weight', e.target.value)} className={inputClass} style={{ minWidth: '70px' }} placeholder="0" />

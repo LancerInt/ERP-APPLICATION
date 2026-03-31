@@ -90,6 +90,7 @@ import CustomerPO from './pages/sales/customer-po/index.jsx';
 import SalesOrders from './pages/sales/orders/index.jsx';
 import DispatchChallan from './pages/sales/dc/index.jsx';
 import SalesInvoice from './pages/sales/invoices/index.jsx';
+import FreightDetails from './pages/sales/freight-details/index.jsx';
 import SalesFreight from './pages/sales/freight/index.jsx';
 import Receivables from './pages/sales/receivables/index.jsx';
 // Sales - Forms
@@ -101,7 +102,12 @@ import DCNew from './pages/sales/dc/new.jsx';
 import DCDetail from './pages/sales/dc/[id].jsx';
 import DCEdit from './pages/sales/dc/edit.jsx';
 import InvoiceNew from './pages/sales/invoices/new.jsx';
+import FreightDetailsNew from './pages/sales/freight-details/new.jsx';
+import FreightDetailsDetail from './pages/sales/freight-details/[id].jsx';
+import FreightDetailsEdit from './pages/sales/freight-details/edit.jsx';
 import SalesFreightNew from './pages/sales/freight/new.jsx';
+import SalesFreightDetail from './pages/sales/freight/[id].jsx';
+import SalesFreightEdit from './pages/sales/freight/edit.jsx';
 import ReceivableNew from './pages/sales/receivables/new.jsx';
 
 // Production - List
@@ -302,8 +308,14 @@ function App() {
           <Route path="/sales/dc/:id/edit" element={<ProtectedRoute module="Dispatch Challan" action="edit"><DCEdit /></ProtectedRoute>} />
           <Route path="/sales/invoices" element={<ProtectedRoute module="Sales Invoice"><SalesInvoice /></ProtectedRoute>} />
           <Route path="/sales/invoices/new" element={<ProtectedRoute module="Sales Invoice" action="create"><InvoiceNew /></ProtectedRoute>} />
+          <Route path="/sales/freight-details" element={<ProtectedRoute module="Freight Advice"><FreightDetails /></ProtectedRoute>} />
+          <Route path="/sales/freight-details/new" element={<ProtectedRoute module="Freight Advice" action="create"><FreightDetailsNew /></ProtectedRoute>} />
+          <Route path="/sales/freight-details/:id" element={<ProtectedRoute module="Freight Advice"><FreightDetailsDetail /></ProtectedRoute>} />
+          <Route path="/sales/freight-details/:id/edit" element={<ProtectedRoute module="Freight Advice" action="edit"><FreightDetailsEdit /></ProtectedRoute>} />
           <Route path="/sales/freight" element={<ProtectedRoute module="Freight Advice"><SalesFreight /></ProtectedRoute>} />
           <Route path="/sales/freight/new" element={<ProtectedRoute module="Freight Advice" action="create"><SalesFreightNew /></ProtectedRoute>} />
+          <Route path="/sales/freight/:id" element={<ProtectedRoute module="Freight Advice"><SalesFreightDetail /></ProtectedRoute>} />
+          <Route path="/sales/freight/:id/edit" element={<ProtectedRoute module="Freight Advice" action="edit"><SalesFreightEdit /></ProtectedRoute>} />
           <Route path="/sales/receivables" element={<ProtectedRoute module="Receivable"><Receivables /></ProtectedRoute>} />
           <Route path="/sales/receivables/new" element={<ProtectedRoute module="Receivable" action="create"><ReceivableNew /></ProtectedRoute>} />
 

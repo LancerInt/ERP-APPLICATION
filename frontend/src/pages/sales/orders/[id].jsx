@@ -76,11 +76,12 @@ export default function SalesOrderDetail() {
   };
 
   const handleApprove = async () => {
-    if (!window.confirm('Approve this Sales Order?')) return;
+    if (!window.confirm('Approve this Sales Order? A Dispatch Challan will be auto-created.')) return;
     setIsApproving(true);
     try {
-      await apiClient.post(`/api/sales/orders/${id}/approve/`);
-      toast.success('Sales Order approved! You can now create Dispatch Challans.');
+      const res = await apiClient.post(`/api/sales/orders/${id}/approve/`);
+      const dcNo = res.data?.dc_no;
+      toast.success(dcNo ? `Approved! DC ${dcNo} created.` : 'Approved!', { duration: 5000 });
       fetchSO();
       fetchLinkedDCs();
     } catch (err) {
@@ -276,6 +277,7 @@ export default function SalesOrderDetail() {
               <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
                 <InfoField label="Customer PO Reference">{so.customer_po_reference || '-'}</InfoField>
                 <InfoField label="Required Ship Date">{formatDate(so.required_ship_date)}</InfoField>
+                <InfoField label="Destination">{so.destination || '-'}</InfoField>
                 <InfoField label="Remarks">
                   <span className="font-normal text-sm">{so.remarks || '-'}</span>
                 </InfoField>
