@@ -19,7 +19,7 @@ from .models import (
 class PRLineSerializer(serializers.ModelSerializer):
     """Serializer for PR line items."""
 
-    id = serializers.IntegerField(required=False, allow_null=True)
+    id = serializers.UUIDField(required=False, allow_null=True)
     product_name = serializers.CharField(
         source='product_service.product_name',
         read_only=True
@@ -617,7 +617,7 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
 class ReceiptLineSerializer(serializers.ModelSerializer):
     """Serializer for receipt line items."""
 
-    id = serializers.IntegerField(required=False, allow_null=True)
+    id = serializers.UUIDField(required=False, allow_null=True)
     product_name = serializers.CharField(source='product.product_name', read_only=True, default='')
     godown_name = serializers.CharField(source='godown_location.godown_name', read_only=True, default='')
     po_line_info = serializers.SerializerMethodField()
@@ -654,7 +654,7 @@ class ReceiptLineSerializer(serializers.ModelSerializer):
 class PackingMaterialLineSerializer(serializers.ModelSerializer):
     """Serializer for packing materials."""
 
-    id = serializers.IntegerField(required=False, allow_null=True)
+    id = serializers.UUIDField(required=False, allow_null=True)
     packaging_sku_name = serializers.CharField(source='packaging_sku.product_name', read_only=True, default='')
     condition_display = serializers.CharField(source='get_condition_display', read_only=True)
 
@@ -675,7 +675,7 @@ class PackingMaterialLineSerializer(serializers.ModelSerializer):
 class FreightDetailSerializer(serializers.ModelSerializer):
     """Serializer for freight details."""
 
-    id = serializers.IntegerField(required=False, allow_null=True)
+    id = serializers.UUIDField(required=False, allow_null=True)
     transporter_name = serializers.CharField(source='transporter.name', read_only=True, default='')
     freight_type_display = serializers.CharField(source='get_freight_type_display', read_only=True)
     payable_by_display = serializers.CharField(source='get_payable_by_display', read_only=True)
@@ -709,7 +709,7 @@ class FreightDetailSerializer(serializers.ModelSerializer):
 class LoadingUnloadingWageSerializer(serializers.ModelSerializer):
     """Serializer for loading/unloading wages."""
 
-    id = serializers.IntegerField(required=False, allow_null=True)
+    id = serializers.UUIDField(required=False, allow_null=True)
     contractor_vendor_name = serializers.CharField(source='contractor_vendor.vendor_name', read_only=True, default='')
     wage_type_display = serializers.CharField(source='get_wage_type_display', read_only=True)
     payable_by_display = serializers.CharField(source='get_payable_by_display', read_only=True)
