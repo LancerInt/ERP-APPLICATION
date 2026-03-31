@@ -148,6 +148,8 @@ class SalesOrder(BaseModel):
         ('PENDING', 'Pending Approval'),
         ('APPROVED', 'Approved'),
         ('REJECTED', 'Rejected'),
+        ('PARTIALLY_DISPATCHED', 'Partially Dispatched'),
+        ('CLOSED', 'Closed'),
     ]
 
     so_no = models.CharField(
@@ -232,6 +234,25 @@ class SalesOrder(BaseModel):
     def mark_rejected(self):
         """Mark sales order as rejected"""
         self.approval_status = 'REJECTED'
+        self.save(update_fields=['approval_status', 'updated_at'])
+
+    def is_fully_dispatched(self) -> bool:
+        """Check if all SO lines are fully dispatched"""
+        for line in self.so_lines.all():
+            if line.get_pending_qty() > 0:
+                return False
+        return True
+
+    def update_dispatch_status(self):
+        """Update SO status based on dispatch progress"""
+        if self.approval_status in ('DRAFT', 'PENDING', 'REJECTED'):
+            return
+        if self.is_fully_dispatched():
+            self.approval_status = 'CLOSED'
+        elif any(l.reserved_qty > 0 for l in self.so_lines.all()):
+            self.approval_status = 'PARTIALLY_DISPATCHED'
+        else:
+            self.approval_status = 'APPROVED'
         self.save(update_fields=['approval_status', 'updated_at'])
 
 

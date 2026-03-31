@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { Plus, Trash2 } from 'lucide-react';
 import MainLayout from '../../../components/layout/MainLayout';
@@ -24,91 +24,79 @@ const GOODS_SUB_TYPE_OPTIONS = [
 ];
 
 const emptyDCLine = {
-  product_category: '',
-  product: '',
-  quantity_dispatched: '',
-  uom: 'KG',
-  batch: '',
-  weight: '',
-  linked_so_line: null,
-  // Display-only fields from SO
-  so_qty: '',
-  balance_qty: '',
+  product_category: '', product: '', quantity_dispatched: '', uom: 'KG',
+  batch: '', weight: '', linked_so_line: null, so_qty: '', balance_qty: '',
 };
 
-export default function CreateDispatchChallan() {
+export default function EditDispatchChallan() {
+  const { id } = useParams();
   const navigate = useNavigate();
   const { options: transporterOptions } = useLookup('/api/transporters/');
+  const { options: warehouseOptions } = useLookup('/api/warehouses/');
   const { options: productOptions, raw: rawProducts } = useLookup('/api/products/');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   const [errors, setErrors] = useState({});
 
-  // Approved SOs for selection
-  const [approvedSOs, setApprovedSOs] = useState([]);
-  const [soInfo, setSOInfo] = useState(null); // Selected SO details
-
   const [formData, setFormData] = useState({
-    dc_no: '',
-    selected_so: '',
-    warehouse: '',
-    transporter: '',
-    lorry_no: '',
-    driver_contact: '',
-    freight_rate_type: '',
-    freight_rate_value: '',
+    dc_no: '', warehouse: '', transporter: '', lorry_no: '',
+    driver_contact: '', freight_rate_type: '', freight_rate_value: '',
   });
   const [dcLines, setDcLines] = useState([{ ...emptyDCLine }]);
+  const [linkedSONo, setLinkedSONo] = useState('');
 
-  // Fetch next DC number
   useEffect(() => {
-    apiClient.get('/api/sales/orders/?approval_status=APPROVED&approval_status=PARTIALLY_DISPATCHED')
-      .then(res => {
-        const list = res.data?.results || res.data || [];
-        setApprovedSOs(list.map(s => ({ value: s.id, label: `${s.so_no} - ${s.customer_name || ''}` })));
-      })
-      .catch(() => setApprovedSOs([]));
-  }, []);
+    const fetchDC = async () => {
+      setIsLoading(true);
+      try {
+        const res = await apiClient.get(`/api/sales/dc/${id}/`);
+        const d = res.data;
+        setFormData({
+          dc_no: d.dc_no || '',
+          warehouse: d.warehouse || '',
+          transporter: d.transporter || '',
+          lorry_no: d.lorry_no || '',
+          driver_contact: d.driver_contact || '',
+          freight_rate_type: d.freight_rate_type || '',
+          freight_rate_value: d.freight_rate_value || '',
+        });
+        setLinkedSONo(d.linked_so_no || '');
 
-  // When SO is selected, fetch its lines with balance info
-  const handleSOChange = async (soId) => {
-    setFormData(prev => ({ ...prev, selected_so: soId, warehouse: '' }));
-    setSOInfo(null);
-    setDcLines([{ ...emptyDCLine }]);
+        // Map DC lines with SO info
+        const lines = (d.dc_lines || []).map(l => {
+          // balance = current dispatched qty + pending (since we're editing, this line's qty is "ours")
+          const currentDispatch = parseFloat(l.quantity_dispatched) || 0;
+          const pendingFromSO = parseFloat(l.pending_qty) || 0;
+          const totalBalance = currentDispatch + pendingFromSO;
+          const soQty = parseFloat(l.quantity_ordered) || 0;
 
-    if (!soId) return;
-
-    try {
-      const res = await apiClient.get(`/api/sales/orders/${soId}/dispatch-lines/`);
-      const data = res.data;
-      setSOInfo(data);
-      setFormData(prev => ({ ...prev, warehouse: data.warehouse || '' }));
-
-      // Auto-fill DC lines from SO lines with pending qty
-      const lines = (data.lines || [])
-        .filter(l => parseFloat(l.pending_qty) > 0)
-        .map(l => ({
-          product_category: l.product_category || '',
-          product: l.product,
-          quantity_dispatched: '', // User enters this
-          uom: l.uom,
-          batch: '',
-          weight: '',
-          linked_so_line: l.so_line_id,
-          so_qty: l.quantity_ordered,
-          balance_qty: l.pending_qty,
-          product_name: l.product_name,
-          product_sku: l.product_sku,
-        }));
-
-      setDcLines(lines.length > 0 ? lines : [{ ...emptyDCLine }]);
-    } catch {
-      toast.error('Failed to load SO details');
-    }
-  };
+          return {
+            product_category: l.product_category || '',
+            product: l.product || '',
+            quantity_dispatched: l.quantity_dispatched || '',
+            uom: l.uom || 'KG',
+            batch: l.batch || '',
+            weight: l.weight || '',
+            linked_so_line: l.linked_so_line || null,
+            so_qty: soQty > 0 ? String(soQty) : '',
+            balance_qty: totalBalance > 0 ? String(totalBalance) : '',
+            product_name: l.product_name || '',
+            product_sku: l.product_sku || '',
+          };
+        });
+        setDcLines(lines.length > 0 ? lines : [{ ...emptyDCLine }]);
+      } catch {
+        toast.error('Failed to load Dispatch Challan');
+        navigate('/sales/dc');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchDC();
+  }, [id]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    if (name === 'selected_so') return handleSOChange(value);
     setFormData(prev => ({ ...prev, [name]: value }));
     if (errors[name]) setErrors(prev => ({ ...prev, [name]: '' }));
   };
@@ -125,10 +113,8 @@ export default function CreateDispatchChallan() {
       if (i !== index) return line;
       const newLine = { ...line, [field]: value };
       if (field === 'product_category') {
-        newLine.product = '';
-        newLine.linked_so_line = null;
-        newLine.so_qty = '';
-        newLine.balance_qty = '';
+        newLine.product = ''; newLine.linked_so_line = null;
+        newLine.so_qty = ''; newLine.balance_qty = '';
       }
       if (field === 'product' && value && !newLine.product_category) {
         const prod = rawProducts.find(p => p.id === value);
@@ -150,11 +136,9 @@ export default function CreateDispatchChallan() {
     return isNaN(n) || n === 0 ? '' : n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
   };
 
-  // Validation
   const validate = () => {
     const newErrors = {};
     if (!formData.warehouse) newErrors.warehouse = 'Warehouse is required';
-
     const validLines = dcLines.filter(l => l.product && l.quantity_dispatched);
     if (validLines.length === 0) {
       newErrors.lines = 'At least one item with product and dispatch quantity is required';
@@ -170,25 +154,19 @@ export default function CreateDispatchChallan() {
             le.qty = `Cannot exceed balance (${fmtQty(line.balance_qty)})`;
           }
         }
-        if (!line.product && line.quantity_dispatched) {
-          le.product = 'Select a product';
-        }
+        if (!line.product && line.quantity_dispatched) le.product = 'Select a product';
         if (Object.keys(le).length > 0) lineErrors[i] = le;
       });
       if (Object.keys(lineErrors).length > 0) newErrors.lineErrors = lineErrors;
     }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validate()) {
-      toast.error('Please fix validation errors.');
-      return;
-    }
-    setIsLoading(true);
+    if (!validate()) { toast.error('Please fix validation errors.'); return; }
+    setIsSaving(true);
     try {
       const validLines = dcLines.filter(l => l.product && l.quantity_dispatched);
       const payload = {
@@ -207,59 +185,59 @@ export default function CreateDispatchChallan() {
           linked_so_line: l.linked_so_line || null,
         })),
       };
-      const res = await apiClient.post('/api/sales/dc/', payload);
-      toast.success('Dispatch Challan created successfully!');
-      navigate(`/sales/dc/${res.data.id || ''}`);
+      await apiClient.put(`/api/sales/dc/${id}/`, payload);
+      toast.success('Dispatch Challan updated!');
+      navigate(`/sales/dc/${id}`);
     } catch (error) {
       toast.error(getApiErrorMessage(error));
     } finally {
-      setIsLoading(false);
+      setIsSaving(false);
     }
   };
+
+  if (isLoading) {
+    return <MainLayout><div className="space-y-4">{[1, 2, 3].map(i => <div key={i} className="h-32 bg-slate-200 rounded animate-pulse" />)}</div></MainLayout>;
+  }
 
   return (
     <MainLayout>
       <PageHeader
-        title="Create Dispatch Challan"
+        title={`Edit DC - ${formData.dc_no}`}
         breadcrumbs={[
           { label: 'Sales', path: '/sales' },
           { label: 'Dispatch Challans', path: '/sales/dc' },
-          { label: 'Create Dispatch Challan' },
+          { label: formData.dc_no, path: `/sales/dc/${id}` },
+          { label: 'Edit' },
         ]}
       />
       <div className="bg-white rounded-lg border border-slate-200 p-6">
         <form onSubmit={handleSubmit} className="space-y-6" noValidate>
-          {/* SO Selection & Dispatch Details */}
+          {/* Dispatch Details */}
           <div>
             <h3 className="text-lg font-semibold text-slate-800 mb-4 pb-2 border-b">Dispatch Details</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Sales Order (optional)</label>
-                <select name="selected_so" value={formData.selected_so} onChange={handleChange} className={inputClass}>
-                  <option value="">Select SO to auto-fill (or create manually)</option>
-                  {approvedSOs.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-                {soInfo && (
-                  <p className="text-xs text-green-600 mt-1">
-                    Customer: {soInfo.customer_name} | Warehouse: {soInfo.warehouse_name}
-                  </p>
-                )}
+                <label className="block text-sm font-medium text-slate-700 mb-1">DC Number</label>
+                <input type="text" value={formData.dc_no} readOnly className={`${inputClass} bg-slate-50 text-slate-600`} />
               </div>
+              {linkedSONo && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Linked SO</label>
+                  <input type="text" value={linkedSONo} readOnly className={`${inputClass} bg-slate-50 text-slate-600`} />
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Warehouse <span className="text-red-500">*</span></label>
-                <input type="text" value={soInfo?.warehouse_name || ''} readOnly={!!soInfo} className={`${errors.warehouse ? errorInputClass : inputClass} ${soInfo ? 'bg-slate-50' : ''}`} placeholder={soInfo ? '' : 'Auto-filled from SO'} />
-                {!soInfo && (
-                  <select name="warehouse" value={formData.warehouse} onChange={handleChange} className={`${errors.warehouse ? errorInputClass : inputClass} mt-1`}>
-                    <option value="">Select Warehouse</option>
-                    {/* For manual DC without SO */}
-                  </select>
-                )}
+                <select name="warehouse" value={formData.warehouse} onChange={handleChange} required className={errors.warehouse ? errorInputClass : inputClass}>
+                  <option value="">Select Warehouse</option>
+                  {warehouseOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
                 {errors.warehouse && <p className="text-xs text-red-500 mt-1">{errors.warehouse}</p>}
               </div>
             </div>
           </div>
 
-          {/* Transport Details */}
+          {/* Transport */}
           <div>
             <h3 className="text-lg font-semibold text-slate-800 mb-4 pb-2 border-b">Transport Details</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -281,7 +259,7 @@ export default function CreateDispatchChallan() {
             </div>
           </div>
 
-          {/* Freight Details */}
+          {/* Freight */}
           <div>
             <h3 className="text-lg font-semibold text-slate-800 mb-4 pb-2 border-b">Freight Details</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -308,14 +286,7 @@ export default function CreateDispatchChallan() {
                 <Plus size={16} /> Add Item
               </button>
             </div>
-            {errors.lines && (
-              <div className="mb-3 p-3 bg-red-50 rounded-lg text-sm text-red-700">{errors.lines}</div>
-            )}
-            {soInfo && (
-              <div className="mb-3 p-3 bg-blue-50 rounded-lg text-sm text-blue-800">
-                SO {soInfo.so_no} loaded. Enter the dispatch quantity for each product. Cannot exceed balance.
-              </div>
-            )}
+            {errors.lines && <div className="mb-3 p-3 bg-red-50 rounded-lg text-sm text-red-700">{errors.lines}</div>}
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -324,8 +295,8 @@ export default function CreateDispatchChallan() {
                     <th className="text-left px-3 py-2 font-medium text-slate-600">Category</th>
                     <th className="text-left px-3 py-2 font-medium text-slate-600">Product <span className="text-red-500">*</span></th>
                     <th className="text-right px-3 py-2 font-medium text-slate-600">SO Qty</th>
-                    <th className="text-right px-3 py-2 font-medium text-slate-600 text-orange-600">Balance to Dispatch</th>
-                    <th className="text-right px-3 py-2 font-medium text-slate-600 text-blue-700">Qty to Dispatch <span className="text-red-500">*</span></th>
+                    <th className="text-right px-3 py-2 font-medium text-orange-600">Balance</th>
+                    <th className="text-right px-3 py-2 font-medium text-blue-700">Qty to Dispatch <span className="text-red-500">*</span></th>
                     <th className="text-left px-3 py-2 font-medium text-slate-600">UOM</th>
                     <th className="text-left px-3 py-2 font-medium text-slate-600">Batch</th>
                     <th className="text-right px-3 py-2 font-medium text-slate-600">Weight</th>
@@ -341,9 +312,7 @@ export default function CreateDispatchChallan() {
                         <td className="px-3 py-2 text-slate-500">{index + 1}</td>
                         <td className="px-3 py-2">
                           {isFromSO ? (
-                            <span className="text-xs text-slate-600">
-                              {GOODS_SUB_TYPE_OPTIONS.find(o => o.value === line.product_category)?.label || line.product_category || '-'}
-                            </span>
+                            <span className="text-xs text-slate-600">{GOODS_SUB_TYPE_OPTIONS.find(o => o.value === line.product_category)?.label || '-'}</span>
                           ) : (
                             <select value={line.product_category || ''} onChange={(e) => handleLineChange(index, 'product_category', e.target.value)} className={inputClass} style={{ minWidth: '130px' }}>
                               {GOODS_SUB_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -352,36 +321,19 @@ export default function CreateDispatchChallan() {
                         </td>
                         <td className="px-3 py-2">
                           {isFromSO ? (
-                            <div>
-                              <p className="font-medium text-slate-800">{line.product_name}</p>
-                              <p className="text-xs text-slate-400">{line.product_sku}</p>
-                            </div>
+                            <div><p className="font-medium text-slate-800">{line.product_name}</p><p className="text-xs text-slate-400">{line.product_sku}</p></div>
                           ) : (
-                            <>
-                              <select value={line.product} onChange={(e) => handleLineChange(index, 'product', e.target.value)} disabled={!line.product_category} className={`${le.product ? errorInputClass : inputClass} disabled:bg-slate-100 disabled:cursor-not-allowed`} style={{ minWidth: '170px' }}>
-                                <option value="">{line.product_category ? 'Select Product' : 'Select Category first'}</option>
-                                {getFilteredProducts(line.product_category).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                              </select>
-                              {le.product && <p className="text-xs text-red-500 mt-0.5">{le.product}</p>}
-                            </>
+                            <select value={line.product} onChange={(e) => handleLineChange(index, 'product', e.target.value)} disabled={!line.product_category} className={`${le.product ? errorInputClass : inputClass} disabled:bg-slate-100`} style={{ minWidth: '170px' }}>
+                              <option value="">{line.product_category ? 'Select Product' : 'Select Category first'}</option>
+                              {getFilteredProducts(line.product_category).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            </select>
                           )}
+                          {le.product && <p className="text-xs text-red-500 mt-0.5">{le.product}</p>}
                         </td>
-                        <td className="px-3 py-2 text-right text-slate-500 font-medium">
-                          {line.so_qty ? fmtQty(line.so_qty) : '-'}
-                        </td>
-                        <td className="px-3 py-2 text-right font-semibold text-orange-600">
-                          {line.balance_qty ? fmtQty(line.balance_qty) : '-'}
-                        </td>
+                        <td className="px-3 py-2 text-right text-slate-500 font-medium">{line.so_qty ? fmtQty(line.so_qty) : '-'}</td>
+                        <td className="px-3 py-2 text-right font-semibold text-orange-600">{line.balance_qty ? fmtQty(line.balance_qty) : '-'}</td>
                         <td className="px-3 py-2">
-                          <input
-                            type="number" step="0.01" min="0.01"
-                            max={line.balance_qty || undefined}
-                            value={line.quantity_dispatched}
-                            onChange={(e) => handleLineChange(index, 'quantity_dispatched', e.target.value)}
-                            className={le.qty ? errorInputClass : `${inputClass} border-blue-300 focus:ring-blue-500`}
-                            style={{ minWidth: '110px' }}
-                            placeholder={line.balance_qty ? `Max ${fmtQty(line.balance_qty)}` : '0'}
-                          />
+                          <input type="number" step="0.01" min="0.01" max={line.balance_qty || undefined} value={line.quantity_dispatched} onChange={(e) => handleLineChange(index, 'quantity_dispatched', e.target.value)} className={le.qty ? errorInputClass : `${inputClass} border-blue-300`} style={{ minWidth: '110px' }} placeholder={line.balance_qty ? `Max ${fmtQty(line.balance_qty)}` : '0'} />
                           {le.qty && <p className="text-xs text-red-500 mt-0.5">{le.qty}</p>}
                         </td>
                         <td className="px-3 py-2">
@@ -419,8 +371,8 @@ export default function CreateDispatchChallan() {
 
           {/* Actions */}
           <div className="flex justify-end gap-3 pt-4 border-t">
-            <button type="button" onClick={() => navigate('/sales/dc')} className="px-6 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
-            <button type="submit" disabled={isLoading} className="px-6 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">{isLoading ? 'Creating...' : 'Create Dispatch Challan'}</button>
+            <button type="button" onClick={() => navigate(`/sales/dc/${id}`)} className="px-6 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
+            <button type="submit" disabled={isSaving} className="px-6 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">{isSaving ? 'Saving...' : 'Update Dispatch Challan'}</button>
           </div>
         </form>
       </div>

@@ -1,181 +1,147 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Plus, Eye, Pencil, Trash2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import MainLayout from '../../../components/layout/MainLayout';
-import PageHeader from '../../../components/common/PageHeader';
-import FilterPanel from '../../../components/common/FilterPanel';
 import DataTable from '../../../components/common/DataTable';
 import StatusBadge from '../../../components/common/StatusBadge';
-import { Pencil } from 'lucide-react';
 import useApiData from '../../../hooks/useApiData.js';
 import usePermissions from '../../../hooks/usePermissions.js';
+import apiClient from '../../../utils/api.js';
 
 export default function DispatchChallanList() {
   const navigate = useNavigate();
-  const { canCreate } = usePermissions();
+  const { canCreate, canEdit, canDelete } = usePermissions();
   const { data, isLoading, error, refetch } = useApiData('/api/sales/dc/');
   const [page, setPage] = useState(1);
   const [sortBy, setSortBy] = useState('dispatch_date');
   const [sortOrder, setSortOrder] = useState('desc');
   const [searchTerm, setSearchTerm] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
-  const [filterValues, setFilterValues] = useState({});
+  const [activeFilters, setActiveFilters] = useState({});
+
+  const handleDelete = async (id, dcNo) => {
+    if (!window.confirm(`Delete Dispatch Challan ${dcNo}? This cannot be undone.`)) return;
+    try {
+      await apiClient.delete(`/api/sales/dc/${id}/`);
+      toast.success(`DC ${dcNo} deleted`);
+      refetch();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to delete');
+    }
+  };
 
   const columns = [
     {
       field: 'dc_no',
-      header: 'DC No',
-      sortable: true,
-      width: '130px',
-    },
-    {
-      field: 'so_no',
-      header: 'SO No',
-      sortable: true,
-      width: '130px',
-    },
-    {
-      field: 'customer',
-      header: 'Customer',
-      sortable: true,
-      width: '200px',
-    },
-    {
-      field: 'warehouse',
-      header: 'Warehouse',
+      header: 'DC Number',
       sortable: true,
       width: '150px',
+      render: (value) => <span className="font-medium text-blue-700">{value}</span>,
     },
     {
       field: 'dispatch_date',
       header: 'Dispatch Date',
       sortable: true,
-      width: '130px',
-      render: (value) => new Date(value).toLocaleDateString(),
+      width: '120px',
+      render: (value) => value ? new Date(value).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-',
     },
     {
-      field: 'transporter',
-      header: 'Transporter',
+      field: 'warehouse_name',
+      header: 'Warehouse',
       sortable: true,
-      width: '170px',
+      width: '140px',
+    },
+    {
+      field: 'total_dispatch_qty',
+      header: 'Total Qty',
+      sortable: true,
+      width: '100px',
+      render: (value) => Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }),
     },
     {
       field: 'status',
       header: 'Status',
       sortable: true,
-      width: '130px',
+      width: '120px',
       render: (value) => <StatusBadge status={value} />,
     },
     {
-      field: 'total_qty',
-      header: 'Total Qty',
-      sortable: true,
-      width: '100px',
-      render: (value) => value.toLocaleString(),
-    },
-    {
       field: 'actions',
-      header: '',
+      header: 'Actions',
       sortable: false,
-      width: '60px',
+      width: '120px',
       render: (_, row) => (
-        <button
-          onClick={(e) => { e.stopPropagation(); navigate(`/sales/dc/${row.id}`); }}
-          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
-          title="Edit"
-        >
-          <Pencil size={15} />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={(e) => { e.stopPropagation(); navigate(`/sales/dc/${row.id}`); }}
+            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
+            title="View Details"
+          >
+            <Eye size={15} />
+          </button>
+          {canEdit('Dispatch Challan') && row.status === 'DRAFT' && (
+            <button
+              onClick={(e) => { e.stopPropagation(); navigate(`/sales/dc/${row.id}/edit`); }}
+              className="p-1.5 text-amber-600 hover:bg-amber-50 rounded transition"
+              title="Edit"
+            >
+              <Pencil size={15} />
+            </button>
+          )}
+          {canDelete('Dispatch Challan') && row.status === 'DRAFT' && (
+            <button
+              onClick={(e) => { e.stopPropagation(); handleDelete(row.id, row.dc_no); }}
+              className="p-1.5 text-red-500 hover:bg-red-50 rounded transition"
+              title="Delete"
+            >
+              <Trash2 size={15} />
+            </button>
+          )}
+        </div>
       ),
     },
   ];
 
-  const filterConfig = [
-    {
-      key: 'search',
-      label: 'Search',
-      type: 'text',
-      placeholder: 'Search DC no, SO no, customer...',
-    },
-    {
-      key: 'warehouse',
-      label: 'Warehouse',
-      type: 'select',
-      options: [
-        { value: 'Main Warehouse', label: 'Main Warehouse' },
-        { value: 'North Hub', label: 'North Hub' },
-        { value: 'South Depot', label: 'South Depot' },
-      ],
-    },
+  const filterOptions = [
     {
       key: 'status',
       label: 'Status',
-      type: 'select',
       options: [
         { value: 'DRAFT', label: 'Draft' },
-        { value: 'DISPATCHED', label: 'Dispatched' },
+        { value: 'RELEASED', label: 'Released' },
         { value: 'DELIVERED', label: 'Delivered' },
-        { value: 'CANCELLED', label: 'Cancelled' },
+        { value: 'CLOSED', label: 'Closed' },
       ],
     },
-    { key: 'date_from', label: 'Date From', type: 'date' },
-    { key: 'date_to', label: 'Date To', type: 'date' },
   ];
 
   const filteredData = (data || []).filter((item) => {
-    const search = (filterValues.search || searchTerm).toLowerCase();
-    const matchesSearch =
-      !search ||
-      item.dc_no.toLowerCase().includes(search) ||
-      item.so_no.toLowerCase().includes(search) ||
-      item.customer.toLowerCase().includes(search);
-    const matchesWarehouse = !filterValues.warehouse || item.warehouse === filterValues.warehouse;
-    const matchesStatus = !filterValues.status || item.status === filterValues.status;
-    const matchesDateFrom = !filterValues.date_from || item.dispatch_date >= filterValues.date_from;
-    const matchesDateTo = !filterValues.date_to || item.dispatch_date <= filterValues.date_to;
-    return matchesSearch && matchesWarehouse && matchesStatus && matchesDateFrom && matchesDateTo;
+    const term = searchTerm.toLowerCase();
+    const matchesSearch = !term ||
+      (item.dc_no || '').toLowerCase().includes(term) ||
+      (item.warehouse_name || '').toLowerCase().includes(term);
+    const matchesStatus = !activeFilters.status || item.status === activeFilters.status;
+    return matchesSearch && matchesStatus;
   });
-
-  const handleSort = (field, order) => {
-    setSortBy(field);
-    setSortOrder(order);
-  };
-
-  const handleFilterChange = (key, value) => {
-    setFilterValues((prev) => ({ ...prev, [key]: value }));
-  };
-
-  const handleFilterReset = () => {
-    setFilterValues({});
-  };
-
-  const breadcrumbs = [
-    { label: 'Sales', href: '/sales' },
-    { label: 'Dispatch Challans' },
-  ];
 
   return (
     <MainLayout>
       <div className="space-y-6">
-        <PageHeader
-          title="Dispatch Challans"
-          subtitle="Manage dispatch challans and track deliveries"
-          breadcrumbs={breadcrumbs}
-          actions={{
-            onExport: () => console.log('Exporting dispatch challans...'),
-            onFilter: () => setShowFilters(!showFilters),
-            ...(canCreate('Dispatch Challan') ? { createLink: '/sales/dc/new', createLabel: 'New DC' } : {}),
-          }}
-        />
-
-        {showFilters && (
-          <FilterPanel
-            filters={filterConfig}
-            values={filterValues}
-            onChange={handleFilterChange}
-            onReset={handleFilterReset}
-            onClose={() => setShowFilters(false)}
-          />
-        )}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900">Dispatch Challans</h1>
+            <p className="text-slate-600 mt-1">Manage dispatch challans and track deliveries</p>
+          </div>
+          {canCreate('Dispatch Challan') && (
+            <button
+              onClick={() => navigate('/sales/dc/new')}
+              className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
+            >
+              <Plus size={20} />
+              New DC
+            </button>
+          )}
+        </div>
 
         {isLoading && <div className="text-center py-8 text-slate-500">Loading...</div>}
         {error && <div className="text-center py-8 text-red-500">Failed to load data</div>}
@@ -188,13 +154,15 @@ export default function DispatchChallanList() {
             pageSize={10}
             totalRecords={filteredData.length}
             onPageChange={setPage}
-            onSort={handleSort}
+            onSort={(f, o) => { setSortBy(f); setSortOrder(o); }}
             sortBy={sortBy}
             sortOrder={sortOrder}
             onSearch={setSearchTerm}
-            searchPlaceholder="Search by DC no, SO no, or customer..."
+            searchPlaceholder="Search by DC number or warehouse..."
+            filters={filterOptions}
+            onFilterChange={setActiveFilters}
             onRowClick={(row) => navigate(`/sales/dc/${row.id}`)}
-            onExport={() => console.log('Exporting...')}
+            emptyMessage="No dispatch challans found"
           />
         </div>
       </div>

@@ -95,7 +95,11 @@ import Receivables from './pages/sales/receivables/index.jsx';
 // Sales - Forms
 import CustomerPONew from './pages/sales/customer-po/new.jsx';
 import SalesOrderNew from './pages/sales/orders/new.jsx';
+import SalesOrderDetail from './pages/sales/orders/[id].jsx';
+import SalesOrderEdit from './pages/sales/orders/edit.jsx';
 import DCNew from './pages/sales/dc/new.jsx';
+import DCDetail from './pages/sales/dc/[id].jsx';
+import DCEdit from './pages/sales/dc/edit.jsx';
 import InvoiceNew from './pages/sales/invoices/new.jsx';
 import SalesFreightNew from './pages/sales/freight/new.jsx';
 import ReceivableNew from './pages/sales/receivables/new.jsx';
@@ -290,8 +294,12 @@ function App() {
           <Route path="/sales/customer-po/new" element={<ProtectedRoute module="Customer PO" action="create"><CustomerPONew /></ProtectedRoute>} />
           <Route path="/sales/orders" element={<ProtectedRoute module="Sales Order"><SalesOrders /></ProtectedRoute>} />
           <Route path="/sales/orders/new" element={<ProtectedRoute module="Sales Order" action="create"><SalesOrderNew /></ProtectedRoute>} />
+          <Route path="/sales/orders/:id" element={<ProtectedRoute module="Sales Order"><SalesOrderDetail /></ProtectedRoute>} />
+          <Route path="/sales/orders/:id/edit" element={<ProtectedRoute module="Sales Order" action="edit"><SalesOrderEdit /></ProtectedRoute>} />
           <Route path="/sales/dc" element={<ProtectedRoute module="Dispatch Challan"><DispatchChallan /></ProtectedRoute>} />
           <Route path="/sales/dc/new" element={<ProtectedRoute module="Dispatch Challan" action="create"><DCNew /></ProtectedRoute>} />
+          <Route path="/sales/dc/:id" element={<ProtectedRoute module="Dispatch Challan"><DCDetail /></ProtectedRoute>} />
+          <Route path="/sales/dc/:id/edit" element={<ProtectedRoute module="Dispatch Challan" action="edit"><DCEdit /></ProtectedRoute>} />
           <Route path="/sales/invoices" element={<ProtectedRoute module="Sales Invoice"><SalesInvoice /></ProtectedRoute>} />
           <Route path="/sales/invoices/new" element={<ProtectedRoute module="Sales Invoice" action="create"><InvoiceNew /></ProtectedRoute>} />
           <Route path="/sales/freight" element={<ProtectedRoute module="Freight Advice"><SalesFreight /></ProtectedRoute>} />

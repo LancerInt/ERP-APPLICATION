@@ -1,92 +1,146 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Pencil } from 'lucide-react';
+import { Plus, Pencil, Eye, Trash2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import MainLayout from '../../../components/layout/MainLayout';
 import DataTable from '../../../components/common/DataTable';
 import StatusBadge from '../../../components/common/StatusBadge';
 import useApiData from '../../../hooks/useApiData.js';
 import usePermissions from '../../../hooks/usePermissions.js';
+import apiClient from '../../../utils/api.js';
 
 export default function SalesOrderList() {
   const navigate = useNavigate();
-  const { canCreate } = usePermissions();
+  const { canCreate, canEdit, canDelete } = usePermissions();
   const { data, isLoading, error, refetch } = useApiData('/api/sales/orders/');
   const [page, setPage] = useState(1);
-  const [sortBy, setSortBy] = useState('createdDate');
+  const [sortBy, setSortBy] = useState('so_date');
   const [sortOrder, setSortOrder] = useState('desc');
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [activeFilters, setActiveFilters] = useState({});
+
+  const handleDelete = async (id, soNo) => {
+    if (!window.confirm(`Are you sure you want to delete Sales Order ${soNo}? This action cannot be undone.`)) return;
+    try {
+      await apiClient.delete(`/api/sales/orders/${id}/`);
+      toast.success(`Sales Order ${soNo} deleted successfully`);
+      refetch();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || err.response?.data?.error || 'Failed to delete');
+    }
+  };
 
   const columns = [
     {
-      field: 'soNumber',
+      field: 'so_no',
       header: 'SO Number',
+      sortable: true,
+      width: '140px',
+      render: (value) => <span className="font-medium text-blue-700">{value}</span>,
+    },
+    {
+      field: 'so_date',
+      header: 'SO Date',
+      sortable: true,
+      width: '110px',
+      render: (value) => value ? new Date(value).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-',
+    },
+    {
+      field: 'customer_name',
+      header: 'Customer',
+      sortable: true,
+      width: '200px',
+    },
+    {
+      field: 'warehouse_name',
+      header: 'Warehouse',
       sortable: true,
       width: '130px',
     },
     {
-      field: 'customer',
-      header: 'Customer',
-      sortable: true,
-      width: '220px',
-    },
-    {
-      field: 'totalAmount',
+      field: 'total_amount',
       header: 'Amount',
       sortable: true,
       width: '140px',
-      render: (value) => `₹${value.toLocaleString()}`,
+      render: (value) => (
+        <span className="font-semibold">
+          ₹{Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+        </span>
+      ),
     },
     {
-      field: 'status',
+      field: 'required_ship_date',
+      header: 'Ship Date',
+      sortable: true,
+      width: '110px',
+      render: (value) => value ? new Date(value).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-',
+    },
+    {
+      field: 'approval_status',
       header: 'Status',
       sortable: true,
-      width: '150px',
+      width: '120px',
       render: (value) => <StatusBadge status={value} />,
     },
     {
-      field: 'deliveryDate',
-      header: 'Delivery Date',
-      sortable: true,
-      width: '140px',
-      render: (value) => new Date(value).toLocaleDateString(),
-    },
-    {
       field: 'actions',
-      header: '',
+      header: 'Actions',
       sortable: false,
-      width: '60px',
+      width: '120px',
       render: (_, row) => (
-        <button
-          onClick={(e) => { e.stopPropagation(); navigate(`/sales/orders/${row.id}`); }}
-          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
-          title="Edit"
-        >
-          <Pencil size={15} />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={(e) => { e.stopPropagation(); navigate(`/sales/orders/${row.id}`); }}
+            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
+            title="View Details"
+          >
+            <Eye size={15} />
+          </button>
+          {canEdit('Sales Order') && row.approval_status === 'DRAFT' && (
+            <button
+              onClick={(e) => { e.stopPropagation(); navigate(`/sales/orders/${row.id}/edit`); }}
+              className="p-1.5 text-amber-600 hover:bg-amber-50 rounded transition"
+              title="Edit"
+            >
+              <Pencil size={15} />
+            </button>
+          )}
+          {canDelete('Sales Order') && row.approval_status === 'DRAFT' && (
+            <button
+              onClick={(e) => { e.stopPropagation(); handleDelete(row.id, row.so_no); }}
+              className="p-1.5 text-red-500 hover:bg-red-50 rounded transition"
+              title="Delete"
+            >
+              <Trash2 size={15} />
+            </button>
+          )}
+        </div>
       ),
     },
   ];
 
   const filterOptions = [
     {
-      key: 'status',
+      key: 'approval_status',
       label: 'Status',
       options: [
         { value: 'DRAFT', label: 'Draft' },
         { value: 'PENDING', label: 'Pending' },
-        { value: 'CONFIRMED', label: 'Confirmed' },
-        { value: 'PARTIALLY_DELIVERED', label: 'Partially Delivered' },
+        { value: 'APPROVED', label: 'Approved' },
+        { value: 'REJECTED', label: 'Rejected' },
+        { value: 'PARTIALLY_DISPATCHED', label: 'Partially Dispatched' },
         { value: 'CLOSED', label: 'Closed' },
       ],
     },
   ];
 
   const filteredData = (data || []).filter((item) => {
-    const matchesSearch =
-      item.soNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.customer.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = !statusFilter || item.status === statusFilter;
+    const term = searchTerm.toLowerCase();
+    const matchesSearch = !term ||
+      (item.so_no || '').toLowerCase().includes(term) ||
+      (item.customer_name || '').toLowerCase().includes(term) ||
+      (item.warehouse_name || '').toLowerCase().includes(term);
+    const matchesStatus = !activeFilters.approval_status || item.approval_status === activeFilters.approval_status;
     return matchesSearch && matchesStatus;
   });
 
@@ -96,29 +150,24 @@ export default function SalesOrderList() {
   };
 
   const handleFilterChange = (filters) => {
-    setStatusFilter(filters.status || '');
+    setActiveFilters(filters);
   };
 
-  const breadcrumbs = [
-    { label: 'Sales', href: '#' },
-    { label: 'Orders' },
-  ];
-
   return (
-    <MainLayout breadcrumbs={breadcrumbs}>
+    <MainLayout>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-slate-900">Sales Orders</h1>
-            <p className="text-slate-600 mt-2">Manage all sales orders</p>
+            <p className="text-slate-600 mt-1">Manage all sales orders</p>
           </div>
           {canCreate('Sales Order') && (
             <button
               onClick={() => navigate('/sales/orders/new')}
-              className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+              className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
             >
               <Plus size={20} />
-              New SO
+              New Sales Order
             </button>
           )}
         </div>
@@ -138,11 +187,11 @@ export default function SalesOrderList() {
             sortBy={sortBy}
             sortOrder={sortOrder}
             onSearch={setSearchTerm}
-            searchPlaceholder="Search by SO number or customer..."
+            searchPlaceholder="Search by SO number, customer or warehouse..."
             filters={filterOptions}
             onFilterChange={handleFilterChange}
             onRowClick={(row) => navigate(`/sales/orders/${row.id}`)}
-            onExport={() => console.log('Exporting...')}
+            emptyMessage="No sales orders found"
           />
         </div>
       </div>

@@ -48,7 +48,7 @@ class ParsedLineSerializer(serializers.ModelSerializer):
 
 class CustomerPOUploadSerializer(serializers.ModelSerializer):
     parsed_lines = ParsedLineSerializer(many=True, read_only=True)
-    customer_name = serializers.CharField(source='customer.name', read_only=True)
+    customer_name = serializers.CharField(source='customer.customer_name', read_only=True)
     linked_so_number = serializers.CharField(
         source='linked_sales_order.so_no',
         read_only=True,
@@ -88,8 +88,9 @@ class CustomerPOUploadSerializer(serializers.ModelSerializer):
 
 
 class SOLineSerializer(serializers.ModelSerializer):
-    product_sku = serializers.CharField(source='product.sku', read_only=True)
-    product_name = serializers.CharField(source='product.name', read_only=True)
+    product_sku = serializers.CharField(source='product.sku_code', read_only=True)
+    product_name = serializers.CharField(source='product.product_name', read_only=True)
+    product_category = serializers.CharField(source='product.goods_sub_type', read_only=True, default='')
     line_total = serializers.SerializerMethodField()
     pending_qty = serializers.SerializerMethodField()
 
@@ -101,6 +102,7 @@ class SOLineSerializer(serializers.ModelSerializer):
             'product',
             'product_sku',
             'product_name',
+            'product_category',
             'batch_preference',
             'quantity_ordered',
             'uom',
@@ -132,7 +134,7 @@ class SOLineSerializer(serializers.ModelSerializer):
 
 
 class SalesOrderListSerializer(serializers.ModelSerializer):
-    customer_name = serializers.CharField(source='customer.name', read_only=True)
+    customer_name = serializers.CharField(source='customer.customer_name', read_only=True)
     warehouse_name = serializers.CharField(source='warehouse.name', read_only=True)
     total_amount = serializers.SerializerMethodField()
 
@@ -161,10 +163,10 @@ class SalesOrderListSerializer(serializers.ModelSerializer):
 
 
 class SalesOrderDetailSerializer(serializers.ModelSerializer):
-    customer_name = serializers.CharField(source='customer.name', read_only=True)
-    company_name = serializers.CharField(source='company.name', read_only=True)
+    customer_name = serializers.CharField(source='customer.customer_name', read_only=True)
+    company_name = serializers.CharField(source='company.legal_name', read_only=True)
     warehouse_name = serializers.CharField(source='warehouse.name', read_only=True)
-    price_list_name = serializers.CharField(source='price_list.name', read_only=True)
+    price_list_name = serializers.CharField(source='price_list.price_list_id', read_only=True, default=None)
     so_lines = SOLineSerializer(many=True, read_only=True)
     approved_by_name = serializers.CharField(
         source='approved_by.user.get_full_name',
@@ -246,17 +248,50 @@ class CreateSalesOrderSerializer(serializers.ModelSerializer):
     @transaction.atomic
     def create(self, validated_data):
         lines_data = validated_data.pop('so_lines', [])
+
+        # Auto-generate SO number if not provided or blank
+        if not validated_data.get('so_no'):
+            from .services import SalesOrderService
+            validated_data['so_no'] = SalesOrderService._generate_so_number()
+
         sales_order = SalesOrder.objects.create(**validated_data)
 
-        for line_data in lines_data:
+        for idx, line_data in enumerate(lines_data, start=1):
+            if not line_data.get('line_no'):
+                line_data['line_no'] = idx
             SOLine.objects.create(so=sales_order, **line_data)
 
         return sales_order
 
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        lines_data = validated_data.pop('so_lines', None)
+
+        # Update SO header fields (exclude so_no which is read-only)
+        validated_data.pop('so_no', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        # Replace SO lines if provided
+        if lines_data is not None:
+            instance.so_lines.all().delete()
+            for idx, line_data in enumerate(lines_data, start=1):
+                if not line_data.get('line_no'):
+                    line_data['line_no'] = idx
+                SOLine.objects.create(so=instance, **line_data)
+
+        return instance
+
 
 class DCLineSerializer(serializers.ModelSerializer):
-    product_sku = serializers.CharField(source='product.sku', read_only=True)
-    product_name = serializers.CharField(source='product.name', read_only=True)
+    product_sku = serializers.CharField(source='product.sku_code', read_only=True)
+    product_name = serializers.CharField(source='product.product_name', read_only=True)
+    product_category = serializers.CharField(source='product.goods_sub_type', read_only=True, default='')
+    so_no = serializers.CharField(source='linked_so_line.so.so_no', read_only=True, default='')
+    so_line_no = serializers.IntegerField(source='linked_so_line.line_no', read_only=True, default=None)
+    quantity_ordered = serializers.DecimalField(source='linked_so_line.quantity_ordered', read_only=True, default=None, max_digits=15, decimal_places=4)
+    pending_qty = serializers.SerializerMethodField()
 
     class Meta:
         model = DCLine
@@ -265,19 +300,139 @@ class DCLineSerializer(serializers.ModelSerializer):
             'product',
             'product_sku',
             'product_name',
+            'product_category',
             'batch',
             'quantity_dispatched',
             'uom',
             'linked_so_line',
+            'so_no',
+            'so_line_no',
+            'quantity_ordered',
+            'pending_qty',
             'weight',
         ]
-        read_only_fields = ['id']
+        read_only_fields = ['id', 'product_sku', 'product_name', 'product_category',
+                            'so_no', 'so_line_no', 'quantity_ordered', 'pending_qty']
         extra_kwargs = {
             'batch': {'required': False, 'allow_blank': True},
             'uom': {'required': False, 'allow_blank': True},
-            'linked_so_line': {'required': False},
-            'weight': {'required': False},
+            'linked_so_line': {'required': False, 'allow_null': True},
+            'weight': {'required': False, 'allow_null': True},
         }
+
+    def get_pending_qty(self, obj):
+        if obj.linked_so_line:
+            return str(obj.linked_so_line.get_pending_qty())
+        return '0'
+
+
+class DCLineWriteSerializer(serializers.ModelSerializer):
+    """Serializer for creating/updating DC lines (nested inside DC)."""
+    class Meta:
+        model = DCLine
+        fields = ['product', 'batch', 'quantity_dispatched', 'uom', 'linked_so_line', 'weight']
+        extra_kwargs = {
+            'batch': {'required': False, 'allow_blank': True},
+            'uom': {'required': False, 'allow_blank': True},
+            'linked_so_line': {'required': False, 'allow_null': True},
+            'weight': {'required': False, 'allow_null': True},
+        }
+
+
+class CreateUpdateDCSerializer(serializers.ModelSerializer):
+    """Serializer for creating and updating Dispatch Challans with nested lines.
+    Updates SO line reserved_qty and SO dispatch status automatically."""
+    dc_lines = DCLineWriteSerializer(many=True)
+
+    class Meta:
+        model = DispatchChallan
+        fields = [
+            'dc_no', 'warehouse', 'transporter', 'lorry_no', 'driver_contact',
+            'freight_rate_type', 'freight_rate_value', 'dc_lines',
+        ]
+        extra_kwargs = {
+            'dc_no': {'required': False, 'allow_blank': True},
+            'transporter': {'required': False, 'allow_null': True},
+            'lorry_no': {'required': False, 'allow_blank': True},
+            'driver_contact': {'required': False, 'allow_blank': True},
+            'freight_rate_type': {'required': False, 'allow_blank': True},
+            'freight_rate_value': {'required': False, 'allow_null': True},
+        }
+
+    def validate_dc_lines(self, lines_data):
+        """Validate dispatch quantities don't exceed SO balance."""
+        for line_data in lines_data:
+            so_line = line_data.get('linked_so_line')
+            qty = line_data.get('quantity_dispatched', 0)
+            if so_line and qty:
+                # For updates, add back the old DC qty for this SO line before checking
+                existing_dc_qty = Decimal('0')
+                if self.instance:
+                    for old_line in self.instance.dc_lines.filter(linked_so_line=so_line):
+                        existing_dc_qty += old_line.quantity_dispatched
+                balance = so_line.get_pending_qty() + existing_dc_qty
+                if qty > balance:
+                    raise serializers.ValidationError(
+                        f'Dispatch qty ({qty}) for {so_line.product.product_name} exceeds '
+                        f'balance to dispatch ({balance}).'
+                    )
+        return lines_data
+
+    def _reverse_reserved_qty(self, dc):
+        """Reverse reserved_qty for existing DC lines before delete."""
+        for line in dc.dc_lines.select_related('linked_so_line').all():
+            if line.linked_so_line:
+                so_line = line.linked_so_line
+                so_line.reserved_qty = max(Decimal('0'), so_line.reserved_qty - line.quantity_dispatched)
+                so_line.save(update_fields=['reserved_qty', 'updated_at'])
+
+    def _apply_reserved_qty(self, dc):
+        """Apply reserved_qty for new DC lines and update SO status."""
+        affected_sos = set()
+        for line in dc.dc_lines.select_related('linked_so_line__so').all():
+            if line.linked_so_line:
+                so_line = line.linked_so_line
+                so_line.reserved_qty += line.quantity_dispatched
+                so_line.save(update_fields=['reserved_qty', 'updated_at'])
+                affected_sos.add(so_line.so)
+        # Update SO dispatch status
+        for so in affected_sos:
+            so.update_dispatch_status()
+
+    @transaction.atomic
+    def create(self, validated_data):
+        lines_data = validated_data.pop('dc_lines', [])
+        if not validated_data.get('dc_no'):
+            from .services import DispatchService
+            validated_data['dc_no'] = DispatchService._generate_dc_number()
+        dc = DispatchChallan.objects.create(**validated_data)
+        for line_data in lines_data:
+            DCLine.objects.create(dc=dc, **line_data)
+        self._apply_reserved_qty(dc)
+        return dc
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        lines_data = validated_data.pop('dc_lines', None)
+        validated_data.pop('dc_no', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        if lines_data is not None:
+            # Reverse old reserved_qty, delete old lines, create new, apply new
+            self._reverse_reserved_qty(instance)
+            affected_sos_old = set()
+            for line in instance.dc_lines.select_related('linked_so_line__so').all():
+                if line.linked_so_line:
+                    affected_sos_old.add(line.linked_so_line.so)
+            instance.dc_lines.all().delete()
+            for line_data in lines_data:
+                DCLine.objects.create(dc=instance, **line_data)
+            self._apply_reserved_qty(instance)
+            # Also update old SOs that may no longer be linked
+            for so in affected_sos_old:
+                so.update_dispatch_status()
+        return instance
 
 
 class DeliveryLocationSerializer(serializers.ModelSerializer):
@@ -336,6 +491,10 @@ class DispatchChallanDetailSerializer(serializers.ModelSerializer):
     dc_lines = DCLineSerializer(many=True, read_only=True)
     delivery_locations = DeliveryLocationSerializer(many=True, read_only=True)
     total_dispatch_qty = serializers.SerializerMethodField()
+    linked_so_no = serializers.SerializerMethodField()
+    linked_so_id = serializers.SerializerMethodField()
+    customer_name = serializers.SerializerMethodField()
+    company_name = serializers.SerializerMethodField()
 
     class Meta:
         model = DispatchChallan
@@ -357,6 +516,10 @@ class DispatchChallanDetailSerializer(serializers.ModelSerializer):
             'dc_lines',
             'delivery_locations',
             'total_dispatch_qty',
+            'linked_so_no',
+            'linked_so_id',
+            'customer_name',
+            'company_name',
         ]
         read_only_fields = ['id', 'dc_no']
         extra_kwargs = {
@@ -370,8 +533,30 @@ class DispatchChallanDetailSerializer(serializers.ModelSerializer):
             'freight_advice_link': {'required': False},
         }
 
+    def _get_linked_so(self, obj):
+        first_line = obj.dc_lines.select_related('linked_so_line__so__customer__company').first()
+        if first_line and first_line.linked_so_line:
+            return first_line.linked_so_line.so
+        return None
+
     def get_total_dispatch_qty(self, obj):
         return str(obj.get_total_dispatch_qty())
+
+    def get_linked_so_no(self, obj):
+        so = self._get_linked_so(obj)
+        return so.so_no if so else None
+
+    def get_linked_so_id(self, obj):
+        so = self._get_linked_so(obj)
+        return str(so.id) if so else None
+
+    def get_customer_name(self, obj):
+        so = self._get_linked_so(obj)
+        return so.customer.customer_name if so and so.customer else None
+
+    def get_company_name(self, obj):
+        so = self._get_linked_so(obj)
+        return so.company.legal_name if so and so.company else None
 
 
 class SalesInvoiceCheckSerializer(serializers.ModelSerializer):
