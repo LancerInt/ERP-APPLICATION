@@ -25,71 +25,200 @@ from .models import (
 
 
 class ParsedLineSerializer(serializers.ModelSerializer):
-    product_sku = serializers.CharField(source='parsed_sku.sku', read_only=True)
-    product_name = serializers.CharField(source='parsed_sku.name', read_only=True)
+    product_sku = serializers.CharField(source='parsed_sku.sku_code', read_only=True)
+    product_name = serializers.CharField(source='parsed_sku.product_name', read_only=True)
+    product_category = serializers.CharField(source='parsed_sku.goods_sub_type', read_only=True, default='')
+    line_total = serializers.SerializerMethodField()
 
     class Meta:
         model = ParsedLine
         fields = [
-            'id',
-            'product_description',
-            'quantity',
-            'uom',
-            'price',
-            'parsed_sku',
-            'product_sku',
-            'product_name',
-            'confidence',
+            'id', 'parsed_sku', 'product_sku', 'product_name', 'product_category',
+            'product_description', 'item_code', 'hsn_code', 'quantity', 'uom', 'price',
+            'discount', 'gst', 'sgst_percent', 'cgst_percent', 'igst_percent',
+            'delivery_schedule_date', 'line_remarks',
+            'confidence', 'line_total',
         ]
-        read_only_fields = ['id']
+        read_only_fields = ['id', 'line_total']
         extra_kwargs = {
             'quantity': {'required': False},
             'uom': {'required': False, 'allow_blank': True},
             'price': {'required': False},
             'parsed_sku': {'required': False},
+            'item_code': {'required': False, 'allow_blank': True},
+            'hsn_code': {'required': False, 'allow_blank': True},
+            'discount': {'required': False},
+            'gst': {'required': False},
+            'sgst_percent': {'required': False},
+            'cgst_percent': {'required': False},
+            'igst_percent': {'required': False},
+            'delivery_schedule_date': {'required': False},
+            'line_remarks': {'required': False, 'allow_blank': True},
             'confidence': {'required': False},
+        }
+
+    def get_line_total(self, obj):
+        qty = obj.quantity or 0
+        price = obj.price or 0
+        disc = obj.discount or 0
+        gst = obj.gst or 0
+        subtotal = qty * price - disc
+        return str(subtotal + subtotal * gst / 100)
+
+
+class CustomerPOLineWriteSerializer(serializers.ModelSerializer):
+    """Write serializer for PO lines (nested inside PO)."""
+    class Meta:
+        model = ParsedLine
+        fields = ['parsed_sku', 'product_description', 'item_code', 'hsn_code', 'quantity', 'uom', 'price',
+                  'discount', 'gst', 'sgst_percent', 'cgst_percent', 'igst_percent',
+                  'delivery_schedule_date', 'line_remarks']
+        extra_kwargs = {
+            'parsed_sku': {'required': False, 'allow_null': True},
+            'product_description': {'required': False, 'allow_blank': True},
+            'item_code': {'required': False, 'allow_blank': True},
+            'hsn_code': {'required': False, 'allow_blank': True},
+            'quantity': {'required': False, 'allow_null': True},
+            'uom': {'required': False, 'allow_blank': True},
+            'price': {'required': False, 'allow_null': True},
+            'discount': {'required': False},
+            'gst': {'required': False},
+            'sgst_percent': {'required': False},
+            'cgst_percent': {'required': False},
+            'igst_percent': {'required': False},
+            'delivery_schedule_date': {'required': False, 'allow_null': True},
+            'line_remarks': {'required': False, 'allow_blank': True},
         }
 
 
 class CustomerPOUploadSerializer(serializers.ModelSerializer):
     parsed_lines = ParsedLineSerializer(many=True, read_only=True)
     customer_name = serializers.CharField(source='customer.customer_name', read_only=True)
+    company_name = serializers.CharField(source='company.legal_name', read_only=True, default='')
+    warehouse_name = serializers.CharField(source='warehouse.name', read_only=True, default='')
     linked_so_number = serializers.CharField(
-        source='linked_sales_order.so_no',
-        read_only=True,
-        allow_null=True
+        source='linked_sales_order.so_no', read_only=True, allow_null=True
     )
+    linked_sos = serializers.SerializerMethodField()
+
+    def get_linked_sos(self, obj):
+        """Get all SOs linked via M2M."""
+        sos = obj.linked_sales_orders.all()
+        return [{'id': str(so.id), 'so_no': so.so_no} for so in sos]
 
     class Meta:
         model = CustomerPOUpload
         fields = [
-            'id',
-            'upload_id',
-            'customer',
-            'customer_name',
-            'upload_date',
-            'po_file',
-            'ai_parser_confidence',
-            'parsed_po_number',
-            'parsed_po_date',
-            'delivery_location',
-            'manual_review_required',
-            'review_comments',
+            'id', 'upload_id',
+            'company', 'company_name', 'warehouse', 'warehouse_name',
+            'customer', 'customer_name',
+            'po_number', 'po_date', 'destination',
+            'price_list', 'freight_terms', 'payment_terms', 'currency',
+            'required_ship_date',
+            'delivery_type', 'indent_no', 'indent_date',
+            'party_code', 'delivery_due_date', 'sales_order_ref',
+            'dispatched_through', 'consignee_name', 'consignee_address', 'consignee_gstin',
+            'billing_address', 'billing_gstin',
+            'special_instructions',
+            'upload_date', 'po_file',
+            'delivery_location', 'remarks',
             'status',
-            'linked_sales_order',
-            'linked_so_number',
+            'linked_sales_order', 'linked_so_number', 'linked_sos',
             'parsed_lines',
         ]
         read_only_fields = ['id', 'upload_id', 'upload_date']
         extra_kwargs = {
-            'ai_parser_confidence': {'required': False},
-            'parsed_po_number': {'required': False, 'allow_blank': True},
-            'parsed_po_date': {'required': False},
+            'company': {'required': False, 'allow_null': True},
+            'warehouse': {'required': False, 'allow_null': True},
+            'po_number': {'required': False, 'allow_blank': True},
+            'po_date': {'required': False, 'allow_null': True},
+            'destination': {'required': False, 'allow_blank': True},
             'delivery_location': {'required': False, 'allow_blank': True},
-            'review_comments': {'required': False, 'allow_blank': True},
-            'status': {'required': False, 'allow_blank': True},
+            'po_file': {'required': False, 'allow_null': True},
+            'remarks': {'required': False, 'allow_blank': True},
+            'status': {'required': False},
             'linked_sales_order': {'required': False},
         }
+
+
+class CreateCustomerPOSerializer(serializers.ModelSerializer):
+    """Create/Update Customer PO with nested line items."""
+    po_lines = CustomerPOLineWriteSerializer(many=True, required=False)
+
+    class Meta:
+        model = CustomerPOUpload
+        fields = [
+            'id', 'upload_id', 'company', 'warehouse', 'customer',
+            'po_number', 'po_date', 'destination', 'delivery_location',
+            'price_list', 'freight_terms', 'payment_terms', 'currency',
+            'required_ship_date',
+            'delivery_type', 'indent_no', 'indent_date',
+            'party_code', 'delivery_due_date', 'sales_order_ref',
+            'dispatched_through', 'consignee_name', 'consignee_address', 'consignee_gstin',
+            'billing_address', 'billing_gstin',
+            'special_instructions',
+            'remarks', 'po_file', 'po_lines',
+        ]
+        read_only_fields = ['id']
+        extra_kwargs = {
+            'upload_id': {'required': False, 'allow_blank': True},
+            'company': {'required': False, 'allow_null': True},
+            'warehouse': {'required': False, 'allow_null': True},
+            'price_list': {'required': False, 'allow_null': True},
+            'freight_terms': {'required': False, 'allow_blank': True},
+            'payment_terms': {'required': False, 'allow_blank': True},
+            'currency': {'required': False, 'allow_blank': True},
+            'required_ship_date': {'required': False, 'allow_null': True},
+            'delivery_type': {'required': False, 'allow_blank': True},
+            'indent_no': {'required': False, 'allow_blank': True},
+            'indent_date': {'required': False, 'allow_null': True},
+            'party_code': {'required': False, 'allow_blank': True},
+            'delivery_due_date': {'required': False, 'allow_null': True},
+            'sales_order_ref': {'required': False, 'allow_blank': True},
+            'dispatched_through': {'required': False, 'allow_blank': True},
+            'consignee_name': {'required': False, 'allow_blank': True},
+            'consignee_address': {'required': False, 'allow_blank': True},
+            'consignee_gstin': {'required': False, 'allow_blank': True},
+            'billing_address': {'required': False, 'allow_blank': True},
+            'billing_gstin': {'required': False, 'allow_blank': True},
+            'special_instructions': {'required': False, 'allow_blank': True},
+            'po_number': {'required': False, 'allow_blank': True},
+            'po_date': {'required': False, 'allow_null': True},
+            'destination': {'required': False, 'allow_blank': True},
+            'delivery_location': {'required': False, 'allow_blank': True},
+            'po_file': {'required': False, 'allow_null': True},
+            'remarks': {'required': False, 'allow_blank': True},
+        }
+
+    @transaction.atomic
+    def create(self, validated_data):
+        lines_data = validated_data.pop('po_lines', [])
+        if not validated_data.get('upload_id'):
+            from datetime import datetime
+            prefix = "CPO"
+            date_part = datetime.now().strftime("%Y%m%d")
+            count = CustomerPOUpload.objects.filter(
+                upload_id__startswith=f"{prefix}-{date_part}"
+            ).count()
+            validated_data['upload_id'] = f"{prefix}-{date_part}-{count + 1:04d}"
+        validated_data['status'] = 'DRAFT'
+        po = CustomerPOUpload.objects.create(**validated_data)
+        for line_data in lines_data:
+            ParsedLine.objects.create(upload=po, **line_data)
+        return po
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        lines_data = validated_data.pop('po_lines', None)
+        validated_data.pop('upload_id', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        if lines_data is not None:
+            instance.parsed_lines.all().delete()
+            for line_data in lines_data:
+                ParsedLine.objects.create(upload=instance, **line_data)
+        return instance
 
 
 class SOLineSerializer(serializers.ModelSerializer):
@@ -174,11 +303,15 @@ class SalesOrderDetailSerializer(serializers.ModelSerializer):
     warehouse_name = serializers.CharField(source='warehouse.name', read_only=True)
     price_list_name = serializers.CharField(source='price_list.price_list_id', read_only=True, default=None)
     so_lines = SOLineSerializer(many=True, read_only=True)
+    customer_po_numbers = serializers.SerializerMethodField()
     approved_by_name = serializers.CharField(
         source='approved_by.user.get_full_name',
         read_only=True,
         allow_null=True
     )
+
+    def get_customer_po_numbers(self, obj):
+        return list(obj.customer_pos.values_list('upload_id', flat=True))
     total_amount = serializers.SerializerMethodField()
 
     class Meta:
@@ -197,6 +330,7 @@ class SalesOrderDetailSerializer(serializers.ModelSerializer):
             'credit_terms',
             'freight_terms',
             'customer_po_reference',
+            'customer_po_numbers',
             'so_date',
             'required_ship_date',
             'destination',
@@ -226,6 +360,9 @@ class SalesOrderDetailSerializer(serializers.ModelSerializer):
 
 class CreateSalesOrderSerializer(serializers.ModelSerializer):
     so_lines = SOLineSerializer(many=True)
+    customer_po_ids = serializers.ListField(
+        child=serializers.UUIDField(), required=False, write_only=True
+    )
 
     class Meta:
         model = SalesOrder
@@ -238,6 +375,7 @@ class CreateSalesOrderSerializer(serializers.ModelSerializer):
             'credit_terms',
             'freight_terms',
             'customer_po_reference',
+            'customer_po_ids',
             'required_ship_date',
             'destination',
             'remarks',
@@ -257,8 +395,8 @@ class CreateSalesOrderSerializer(serializers.ModelSerializer):
     @transaction.atomic
     def create(self, validated_data):
         lines_data = validated_data.pop('so_lines', [])
+        po_ids = validated_data.pop('customer_po_ids', [])
 
-        # Auto-generate SO number if not provided or blank
         if not validated_data.get('so_no'):
             from .services import SalesOrderService
             validated_data['so_no'] = SalesOrderService._generate_so_number()
@@ -270,13 +408,18 @@ class CreateSalesOrderSerializer(serializers.ModelSerializer):
                 line_data['line_no'] = idx
             SOLine.objects.create(so=sales_order, **line_data)
 
+        # Link multiple POs
+        if po_ids:
+            pos = CustomerPOUpload.objects.filter(id__in=po_ids)
+            sales_order.customer_pos.set(pos)
+
         return sales_order
 
     @transaction.atomic
     def update(self, instance, validated_data):
         lines_data = validated_data.pop('so_lines', None)
+        po_ids = validated_data.pop('customer_po_ids', None)
 
-        # Update SO header fields (exclude so_no which is read-only)
         validated_data.pop('so_no', None)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
@@ -289,6 +432,11 @@ class CreateSalesOrderSerializer(serializers.ModelSerializer):
                 if not line_data.get('line_no'):
                     line_data['line_no'] = idx
                 SOLine.objects.create(so=instance, **line_data)
+
+        # Update PO links
+        if po_ids is not None:
+            pos = CustomerPOUpload.objects.filter(id__in=po_ids)
+            instance.customer_pos.set(pos)
 
         return instance
 

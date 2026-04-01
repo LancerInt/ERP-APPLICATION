@@ -156,12 +156,12 @@ export default function DispatchChallanDetail() {
           </div>
 
           <div className="flex items-center gap-3 flex-wrap ml-8 sm:ml-0">
-            {hasEditPerm && isDraft && (
+            {hasEditPerm && (
               <button onClick={() => navigate(`/sales/dc/${id}/edit`)} className="flex items-center gap-2 px-4 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 text-sm font-medium">
                 <Edit3 size={16} /> Edit
               </button>
             )}
-            {hasDeletePerm && isDraft && (
+            {hasDeletePerm && (
               <button onClick={handleDelete} className="flex items-center gap-2 px-4 py-2 border border-red-300 rounded-lg text-red-600 hover:bg-red-50 text-sm font-medium">
                 <Trash2 size={16} /> Delete
               </button>
