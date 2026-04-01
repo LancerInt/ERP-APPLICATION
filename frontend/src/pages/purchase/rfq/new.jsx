@@ -5,10 +5,12 @@ import MainLayout from '../../../components/layout/MainLayout';
 import PageHeader from '../../../components/common/PageHeader';
 import apiClient from '../../../utils/api.js';
 import { cleanFormData, getApiErrorMessage } from '../../../utils/formHelpers.js';
+import FileAttachments, { uploadPendingFiles } from '../components/FileAttachments';
 
 export default function CreateRFQ() {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState([]);
   const [formData, setFormData] = useState({
     rfq_mode: '',
     linked_prs: '',
@@ -29,7 +31,13 @@ export default function CreateRFQ() {
     try {
       const payload = cleanFormData(formData);
       if (import.meta.env.DEV) console.log('[CreateRFQ] payload:', payload);
-      await apiClient.post('/api/purchase/rfq/', payload);
+      const res = await apiClient.post('/api/purchase/rfq/', payload);
+      const newId = res.data?.id;
+
+      if (pendingAttachments.length > 0 && newId) {
+        await uploadPendingFiles('RFQ', newId, pendingAttachments);
+      }
+
       toast.success('RFQ created successfully!');
       navigate('/purchase/rfq');
     } catch (error) {
@@ -91,6 +99,8 @@ export default function CreateRFQ() {
               </div>
             </div>
           </div>
+          <FileAttachments module="RFQ" recordId={null} onPendingChange={setPendingAttachments} />
+
           <div className="flex justify-end gap-3 pt-4 border-t">
             <button type="button" onClick={() => navigate(-1)} className="px-6 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
             <button type="submit" disabled={isLoading} className="px-6 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">{isLoading ? 'Saving...' : 'Save'}</button>

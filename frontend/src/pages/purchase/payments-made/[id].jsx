@@ -7,6 +7,7 @@ import PageHeader from '../../../components/common/PageHeader';
 import StatusBadge from '../../../components/common/StatusBadge';
 import apiClient from '../../../utils/api.js';
 import exportToExcel from '../../../utils/exportExcel.js';
+import FileAttachments from '../components/FileAttachments';
 
 export default function PaymentMadeDetail() {
   const { id } = useParams();
@@ -513,6 +514,8 @@ export default function PaymentMadeDetail() {
           </div>
         </div>
       )}
+
+      <FileAttachments module="PAYMENT" recordId={id} />
     </MainLayout>
   );
 }

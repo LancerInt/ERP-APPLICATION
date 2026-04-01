@@ -302,7 +302,7 @@ class EmailService:
 
             log.email_sent = True
             log.sent_at = timezone.now()
-            log.save(update_fields=['email_sent', 'sent_at', 'updated_at'])
+            log.save(update_fields=['email_sent', 'sent_at'])
 
             logger.info(
                 f'RFQ email sent successfully: {rfq.rfq_no} -> {vendor.contact_email}'
@@ -316,7 +316,7 @@ class EmailService:
             }
         except Exception as e:
             log.error_message = str(e)
-            log.save(update_fields=['error_message', 'updated_at'])
+            log.save(update_fields=['error_message'])
 
             logger.error(
                 f'RFQ email failed: {rfq.rfq_no} -> {vendor.contact_email}: {e}'

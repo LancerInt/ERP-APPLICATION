@@ -7,6 +7,7 @@ import PageHeader from '../../../components/common/PageHeader';
 import StatusBadge from '../../../components/common/StatusBadge';
 import apiClient from '../../../utils/api.js';
 import usePermissions from '../../../hooks/usePermissions.js';
+import FileAttachments from '../components/FileAttachments';
 
 export default function FreightAdviceDetail() {
   const { id } = useParams();
@@ -383,6 +384,8 @@ export default function FreightAdviceDetail() {
           </div>
         </div>
       </div>
+
+      <FileAttachments module="FREIGHT" recordId={id} />
     </MainLayout>
   );
 }

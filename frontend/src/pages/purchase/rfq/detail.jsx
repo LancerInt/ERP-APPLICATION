@@ -7,6 +7,7 @@ import StatusBadge from '../../../components/common/StatusBadge';
 import apiClient from '../../../utils/api.js';
 import usePermissions from '../../../hooks/usePermissions.js';
 import useLookup from '../../../hooks/useLookup.js';
+import FileAttachments from '../components/FileAttachments';
 
 export default function RFQDetailPage() {
   const { id } = useParams();
@@ -275,6 +276,8 @@ export default function RFQDetailPage() {
           </div>
         </div>
       </div>
+
+      <FileAttachments module="RFQ" recordId={id} />
     </MainLayout>
   );
 }

@@ -20,6 +20,7 @@ import { Plus } from 'lucide-react';
 import apiClient from '../../../utils/api.js';
 import usePermissions from '../../../hooks/usePermissions.js';
 import useLookup from '../../../hooks/useLookup.js';
+import FileAttachments from '../components/FileAttachments';
 
 export default function PurchaseRequestDetailPage() {
   const { id } = useParams();
@@ -349,7 +350,7 @@ export default function PurchaseRequestDetailPage() {
           {/* Action Buttons */}
           <div className="flex items-center gap-3 flex-wrap ml-8 sm:ml-0">
             {/* Edit button */}
-            {!isEditing && canEditPR && (
+            {!isEditing && canEditPR && !isApproved && !isRejected && (
               <>
                 <button
                   onClick={handleEdit}
@@ -826,6 +827,8 @@ export default function PurchaseRequestDetailPage() {
           </div>
         </div>
       </div>
+
+      <FileAttachments module="PR" recordId={id} />
     </MainLayout>
   );
 }

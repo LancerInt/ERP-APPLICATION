@@ -12,8 +12,20 @@ from .models import (
     PurchaseOrder, POLine, POETAUpdate,
     ReceiptAdvice, ReceiptLine, PackingMaterialLine, FreightDetail,
     LoadingUnloadingWage, FreightPaymentSchedule, FreightAdviceInbound,
-    VendorPaymentAdvice, PaymentTaxComponent
+    VendorPaymentAdvice, PaymentTaxComponent,
+    PurchaseAttachment
 )
+
+
+class PurchaseAttachmentSerializer(serializers.ModelSerializer):
+    """Serializer for purchase attachments."""
+    uploaded_by_name = serializers.CharField(source='uploaded_by.get_full_name', read_only=True, default='')
+
+    class Meta:
+        model = PurchaseAttachment
+        fields = ['id', 'module', 'record_id', 'file', 'file_name', 'file_size', 'file_type',
+                  'uploaded_by', 'uploaded_by_name', 'created_at']
+        read_only_fields = ['id', 'file_name', 'file_size', 'file_type', 'uploaded_by', 'created_at']
 
 
 class PRLineSerializer(serializers.ModelSerializer):
@@ -97,6 +109,11 @@ class PurchaseRequestSerializer(serializers.ModelSerializer):
         source='warehouse.name',
         read_only=True
     )
+    preferred_vendor_name = serializers.CharField(
+        source='preferred_vendor.vendor_name',
+        read_only=True,
+        default=''
+    )
     godown_name = serializers.CharField(
         source='godown.name',
         read_only=True,
@@ -143,7 +160,8 @@ class PurchaseRequestSerializer(serializers.ModelSerializer):
             'requestor_role', 'requirement_type', 'requirement_type_display',
             'priority', 'priority_display', 'required_by_date', 'justification',
             'approval_status', 'approval_status_display', 'visibility_scope',
-            'notes', 'allow_rfq_skip', 'approved_by', 'approved_by_name', 'approved_at',
+            'notes', 'allow_rfq_skip', 'preferred_vendor', 'preferred_vendor_name',
+            'approved_by', 'approved_by_name', 'approved_at',
             'linked_rfq', 'linked_rfq_no', 'has_po',
             'lines', 'approval_trails', 'created_at', 'updated_at'
         ]
@@ -154,6 +172,7 @@ class PurchaseRequestSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'requested_by': {'required': False, 'allow_null': True},
             'godown': {'required': False, 'allow_null': True},
+            'preferred_vendor': {'required': False, 'allow_null': True},
             'requestor_role': {'required': False, 'allow_blank': True},
             'requirement_type': {'required': False, 'allow_blank': True},
             'priority': {'required': False, 'allow_blank': True},
@@ -254,6 +273,7 @@ class RFQHeaderSerializer(serializers.ModelSerializer):
         source='get_rfq_status_display',
         read_only=True
     )
+    email_sent = serializers.SerializerMethodField()
 
     class Meta:
         model = RFQHeader
@@ -263,7 +283,7 @@ class RFQHeaderSerializer(serializers.ModelSerializer):
             'quote_count_expected', 'quote_count', 'skip_rfq_flag',
             'skip_rfq_justification', 'purchase_manager_approval',
             'purchase_manager_approval_name', 'linked_prs', 'linked_pr_numbers', 'eta_updates',
-            'created_at', 'updated_at'
+            'email_sent', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'rfq_no', 'creation_date', 'created_at', 'updated_at']
         extra_kwargs = {
@@ -282,10 +302,16 @@ class RFQHeaderSerializer(serializers.ModelSerializer):
         prs = obj.source_purchase_requests.all() if hasattr(obj, 'source_purchase_requests') else []
         if prs:
             return [pr.pr_no for pr in prs]
-        # Fallback: check linked_prs M2M if it exists
         if hasattr(obj, 'linked_prs'):
             return [pr.pr_no for pr in obj.linked_prs.all()]
         return []
+
+    def get_email_sent(self, obj):
+        try:
+            from communications.models import EmailLog
+            return EmailLog.objects.filter(rfq=obj, email_sent=True).exists()
+        except Exception:
+            return False
 
 
 class QuoteLineSerializer(serializers.ModelSerializer):
@@ -436,11 +462,13 @@ class QuoteEvaluationSerializer(serializers.ModelSerializer):
         source='get_approval_status_display',
         read_only=True
     )
+    linked_pr_numbers = serializers.SerializerMethodField()
 
     class Meta:
         model = QuoteEvaluation
         fields = [
-            'id', 'evaluation_id', 'rfq', 'rfq_no', 'evaluation_date', 'evaluated_by',
+            'id', 'evaluation_id', 'rfq', 'rfq_no', 'linked_pr_numbers',
+            'evaluation_date', 'evaluated_by',
             'evaluated_by_name', 'best_quote_flag', 'recommended_vendor',
             'recommended_vendor_name', 'justification_notes', 'approval_status',
             'approval_status_display', 'comparison_entries', 'approval_trails',
@@ -457,6 +485,11 @@ class QuoteEvaluationSerializer(serializers.ModelSerializer):
         if obj.evaluated_by and hasattr(obj.evaluated_by, 'user'):
             return obj.evaluated_by.user.get_full_name() or obj.evaluated_by.user.username
         return '-'
+
+    def get_linked_pr_numbers(self, obj):
+        if obj.rfq and hasattr(obj.rfq, 'linked_prs'):
+            return [pr.pr_no for pr in obj.rfq.linked_prs.all()]
+        return []
 
 
 class POLineSerializer(serializers.ModelSerializer):
@@ -573,6 +606,7 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
         source='get_status_display',
         read_only=True
     )
+    email_sent = serializers.SerializerMethodField()
 
     class Meta:
         model = PurchaseOrder
@@ -584,7 +618,7 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
             'status', 'status_display', 'partial_receipt_flag', 'linked_prs',
             'linked_pr_numbers',
             'po_lines', 'eta_updates', 'total_order_value', 'total_received',
-            'is_fully_received', 'created_at', 'updated_at'
+            'is_fully_received', 'email_sent', 'created_at', 'updated_at'
         ]
         read_only_fields = [
             'id', 'po_no', 'revision_no', 'po_date', 'created_at', 'updated_at'
@@ -613,6 +647,17 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
     def get_linked_pr_numbers(self, obj):
         """Return PR numbers for linked purchase requests."""
         return [pr.pr_no for pr in obj.linked_prs.all()]
+
+    def get_email_sent(self, obj):
+        try:
+            from communications.models import EmailLog
+            return EmailLog.objects.filter(
+                vendor=obj.vendor, email_sent=True
+            ).filter(
+                subject__icontains=obj.po_no
+            ).exists() if obj.vendor else False
+        except Exception:
+            return False
 
 
 class ReceiptLineSerializer(serializers.ModelSerializer):

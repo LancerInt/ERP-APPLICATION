@@ -54,10 +54,7 @@ export default function QuoteEvaluationPage() {
         title="Quote Evaluations"
         subtitle={activeTab === 'list' ? 'View and manage all evaluations' : 'Compare vendor quotes and select the best offer'}
         breadcrumbs={[{ label: 'Purchase', href: '/purchase' }, { label: 'Evaluations' }]}
-        actions={activeTab === 'list' ? {
-          createLink: '/purchase/evaluations/new',
-          createLabel: 'New Evaluation',
-        } : {}}
+        actions={{}}
       />
 
       {/* Tab Switcher */}
@@ -100,6 +97,12 @@ function EvaluationListTab() {
 
   const columns = [
     { key: 'evaluation_id', label: 'Evaluation ID', sortable: true },
+    { key: 'linked_pr_numbers', label: 'PR No', sortable: false,
+      render: (value) => {
+        if (!value || !Array.isArray(value) || value.length === 0) return '-';
+        return value.join(', ');
+      },
+    },
     { key: 'rfq', label: 'RFQ', sortable: true,
       render: (value, row) => {
         const display = row.rfq_no || (typeof value === 'string' && value.length > 20 ? value.substring(0, 8) + '...' : value || '-');
@@ -735,65 +738,6 @@ function EvaluationDashboardTab() {
             </div>
           )}
 
-          {/* Detailed Quote Responses */}
-          {comparisonData.vendorList.length > 0 && (
-            <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6 shadow-sm">
-              <h3 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
-                <FileText size={20} className="text-primary-600" />
-                Detailed Quote Responses
-              </h3>
-              <div className="space-y-6">
-                {comparisonData.vendorList.map((vendor) => {
-                  const decision = vendorDecisions[String(vendor.id)];
-                  return (
-                    <div key={vendor.id} className={`border rounded-lg overflow-hidden ${decision === 'accept' ? 'border-emerald-300 bg-emerald-50/30' : decision === 'reject' ? 'border-red-200 bg-red-50/20' : 'border-slate-200'}`}>
-                      <div className="bg-slate-50 px-4 py-3 flex items-center justify-between border-b">
-                        <div>
-                          <span className="font-semibold text-slate-800">{vendor.vendorName}</span>
-                          <span className="ml-2 text-xs text-slate-500">Quote: {vendor.quoteNo}</span>
-                        </div>
-                        <div className="flex items-center gap-4 text-sm text-slate-600">
-                          {vendor.deliveryDays && <span className="flex items-center gap-1"><Truck size={14} /> {vendor.deliveryDays} days</span>}
-                          {vendor.paymentTerms && <span className="flex items-center gap-1"><CreditCard size={14} /> {vendor.paymentTerms.replace(/_/g, ' ')}</span>}
-                          <span className="font-semibold text-primary-700">{formatCurrency(vendor.totalValue)}</span>
-                        </div>
-                      </div>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="bg-slate-50/50">
-                              <th className="text-left px-4 py-2 font-medium text-slate-600">#</th>
-                              <th className="text-left px-4 py-2 font-medium text-slate-600">Product</th>
-                              <th className="text-right px-4 py-2 font-medium text-slate-600">Qty</th>
-                              <th className="text-left px-4 py-2 font-medium text-slate-600">UOM</th>
-                              <th className="text-right px-4 py-2 font-medium text-slate-600">Unit Price</th>
-                              <th className="text-right px-4 py-2 font-medium text-slate-600">GST %</th>
-                              <th className="text-right px-4 py-2 font-medium text-slate-600">Discount %</th>
-                              <th className="text-right px-4 py-2 font-medium text-slate-600">Total</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {vendor.lines.map((line, idx) => (
-                              <tr key={idx} className="border-t border-slate-100">
-                                <td className="px-4 py-2 text-slate-500">{idx + 1}</td>
-                                <td className="px-4 py-2 font-medium text-slate-800">{line.product_name || line.product_code || '-'}</td>
-                                <td className="px-4 py-2 text-right">{formatNumber(line.quantity_offered || line.quantity || line.qty || 0)}</td>
-                                <td className="px-4 py-2">{line.uom || '-'}</td>
-                                <td className="px-4 py-2 text-right">{formatCurrency(line.unit_price || line.price || 0)}</td>
-                                <td className="px-4 py-2 text-right">{line.gst || line.gst_percentage || 0}%</td>
-                                <td className="px-4 py-2 text-right">{line.discount || 0}%</td>
-                                <td className="px-4 py-2 text-right font-medium">{formatCurrency(line.total || line.line_total || 0)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
 
           {/* Evaluation Summary */}
           {comparisonData.vendorList.length > 0 && (

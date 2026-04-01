@@ -25,15 +25,7 @@ DEFAULT_BODY_HTML = """
         <div style="background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 4px; padding: 15px; margin: 20px 0;">
             <table style="width: 100%; border: none;">
                 <tr>
-                    <td style="border: none; padding: 4px 8px; font-size: 13px; color: #666; width: 140px;"><strong>RFQ Number:</strong></td>
-                    <td style="border: none; padding: 4px 8px; font-size: 13px; color: #333;">{{rfq_number}}</td>
-                </tr>
-                <tr>
-                    <td style="border: none; padding: 4px 8px; font-size: 13px; color: #666;"><strong>Date:</strong></td>
-                    <td style="border: none; padding: 4px 8px; font-size: 13px; color: #333;">{{rfq_date}}</td>
-                </tr>
-                <tr>
-                    <td style="border: none; padding: 4px 8px; font-size: 13px; color: #666;"><strong>From:</strong></td>
+                    <td style="border: none; padding: 4px 8px; font-size: 13px; color: #666; width: 140px;"><strong>From:</strong></td>
                     <td style="border: none; padding: 4px 8px; font-size: 13px; color: #333;">{{company_name}}</td>
                 </tr>
             </table>

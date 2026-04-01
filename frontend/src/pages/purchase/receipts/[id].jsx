@@ -7,6 +7,7 @@ import PageHeader from '../../../components/common/PageHeader';
 import StatusBadge from '../../../components/common/StatusBadge';
 import apiClient from '../../../utils/api.js';
 import useLookup from '../../../hooks/useLookup.js';
+import FileAttachments from '../components/FileAttachments';
 
 const emptyReceiptLine = {
   _isNew: true, product: '', po_line: '', quantity_received: '', uom: 'KG', batch_no: '', godown_location: '', remarks: '',
@@ -746,6 +747,8 @@ export default function ReceiptAdviceDetail() {
           </div>
         </div>
       </div>
+
+      <FileAttachments module="RECEIPT" recordId={id} />
     </MainLayout>
   );
 }

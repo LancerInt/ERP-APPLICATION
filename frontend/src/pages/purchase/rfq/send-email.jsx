@@ -153,34 +153,38 @@ export default function SendRFQEmail() {
     }
   };
 
-  // Preview email
-  const handlePreview = async () => {
-    if (!selectedTemplate) {
-      toast.error('Please select a template first');
-      return;
-    }
-    const firstVendor = selectedVendors[0] || (vendors.length > 0 ? vendors[0].id : null);
-    if (!firstVendor) {
-      toast.error('No vendors available for preview');
-      return;
-    }
+  // Preview state
+  const [previewSubject, setPreviewSubject] = useState('');
+  const [showFullPreview, setShowFullPreview] = useState(false);
+  const [previewContext, setPreviewContext] = useState({});
+
+  // "Send Email" button now opens preview first
+  const handleSendMailClick = async () => {
+    if (!selectedTemplate) { toast.error('Please select a template first'); return; }
+    if (selectedVendors.length === 0) { toast.error('Please select at least one vendor'); return; }
+    const firstVendor = selectedVendors[0];
     setIsPreviewing(true);
+    setShowFullPreview(true);
+    setPreviewHtml('');
     try {
       const res = await apiClient.post(`/api/communications/templates/${selectedTemplate}/preview/`, {
         rfq_id: id,
         vendor_id: firstVendor,
       });
-      setPreviewHtml(res.data.html || res.data.rendered || res.data.body || JSON.stringify(res.data));
+      setPreviewSubject(res.data.subject || '');
+      setPreviewHtml(res.data.body_html || res.data.html || res.data.rendered || res.data.body || '');
+      setPreviewContext(res.data.context_data || {});
     } catch (err) {
       toast.error(getApiErrorMessage(err));
+      setShowFullPreview(false);
     } finally {
       setIsPreviewing(false);
     }
   };
 
-  // Send emails
-  const handleSend = async () => {
-    setShowConfirm(false);
+  // Confirm send from preview — stays on preview until complete
+  const handleConfirmSend = async () => {
+    if (isSending) return; // prevent double-click
     setIsSending(true);
     setSendResults(null);
     try {
@@ -192,7 +196,6 @@ export default function SendRFQEmail() {
       const results = res.data;
       setSendResults(results);
 
-      // Show success/failure counts
       if (results.results) {
         const successCount = results.results.filter(r => r.success || r.status === 'sent').length;
         const failCount = results.results.length - successCount;
@@ -205,9 +208,11 @@ export default function SendRFQEmail() {
         toast.success(results.message || 'Emails sent successfully!');
       }
 
-      // Refresh email logs
       refreshLogs();
+      // Close preview only after success
+      setShowFullPreview(false);
     } catch (err) {
+      // Keep preview open on failure so user can retry
       toast.error(getApiErrorMessage(err));
     } finally {
       setIsSending(false);
@@ -419,27 +424,14 @@ export default function SendRFQEmail() {
             <div className="flex gap-3">
               <button
                 type="button"
-                onClick={handlePreview}
-                disabled={!selectedTemplate || isPreviewing}
-                className="flex-1 px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                onClick={handleSendMailClick}
+                disabled={!canSend || isPreviewing}
+                className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
               >
                 {isPreviewing ? (
                   <span className="flex items-center justify-center gap-2">
-                    <span className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin"></span>
-                    Previewing...
-                  </span>
-                ) : 'Preview'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowConfirm(true)}
-                disabled={!canSend || isSending}
-                className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
-              >
-                {isSending ? (
-                  <span className="flex items-center justify-center gap-2">
                     <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                    Sending...
+                    Preparing Preview...
                   </span>
                 ) : `Send Email to ${sendableCount} Vendor${sendableCount !== 1 ? 's' : ''}`}
               </button>
@@ -613,25 +605,83 @@ export default function SendRFQEmail() {
         </div>
       )}
 
-      {/* Email Preview */}
-      {previewHtml && (
-        <div className="bg-white rounded-lg border border-slate-200 p-5 mb-6">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-slate-800">Email Preview</h3>
-            <button
-              type="button"
-              onClick={() => setPreviewHtml('')}
-              className="text-xs text-slate-500 hover:text-slate-700"
-            >
-              Close Preview
-            </button>
+      {/* Full-Screen Email Preview Modal */}
+      {showFullPreview && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-50" onClick={() => !isSending && setShowFullPreview(false)} />
+          <div className="fixed inset-4 md:inset-6 lg:inset-10 bg-white rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-violet-50 to-white flex-shrink-0">
+              <div>
+                <h2 className="text-lg font-bold text-slate-800">Email Preview</h2>
+                {previewSubject && <p className="text-sm text-slate-500 mt-0.5">Subject: {previewSubject}</p>}
+                <p className="text-xs text-slate-400 mt-0.5">{rfq?.rfq_no || ''} — Sending to {selectedVendors.length} vendor(s)</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleConfirmSend}
+                  disabled={isSending || isPreviewing || !previewHtml}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 disabled:opacity-50 transition"
+                >
+                  {isSending ? (
+                    <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Sending...</>
+                  ) : (
+                    <><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg> Confirm & Send</>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowFullPreview(false)}
+                  disabled={isSending}
+                  className="px-4 py-2.5 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {isPreviewing ? (
+                <div className="flex flex-col items-center justify-center py-20">
+                  <div className="w-10 h-10 border-4 border-violet-500 border-t-transparent rounded-full animate-spin mb-3" />
+                  <p className="text-slate-500 text-sm">Generating email preview...</p>
+                </div>
+              ) : previewHtml ? (
+                <div className="p-6 space-y-4">
+                  {/* Email Metadata */}
+                  <div className="bg-slate-50 rounded-xl border border-slate-200 p-5 space-y-3">
+                    <div className="flex items-start gap-3">
+                      <span className="text-xs font-semibold text-slate-500 uppercase w-16 pt-0.5 flex-shrink-0">To</span>
+                      <p className="text-sm text-slate-800">{selectedVendors.length} vendor(s) selected</p>
+                    </div>
+                    <div className="border-t border-slate-200" />
+                    <div className="flex items-start gap-3">
+                      <span className="text-xs font-semibold text-slate-500 uppercase w-16 pt-0.5 flex-shrink-0">Subject</span>
+                      <p className="text-sm font-medium text-slate-800">{previewSubject || '(No subject)'}</p>
+                    </div>
+                    <div className="border-t border-slate-200" />
+                    <div className="flex items-start gap-3">
+                      <span className="text-xs font-semibold text-slate-500 uppercase w-16 pt-0.5 flex-shrink-0">Attach</span>
+                      <p className="text-sm text-slate-700">{rfq?.rfq_no || 'RFQ'}.pdf (Auto-generated)</p>
+                    </div>
+                  </div>
+                  {/* Email Body */}
+                  <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
+                    <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 rounded-t-xl">
+                      <span className="text-xs font-semibold text-slate-500 uppercase">Email Body</span>
+                    </div>
+                    <div className="p-6">
+                      <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+                  <p>Failed to load preview</p>
+                </div>
+              )}
+            </div>
           </div>
-          <div
-            className="border border-slate-200 rounded-lg p-4 bg-white prose prose-sm max-w-none overflow-auto"
-            style={{ maxHeight: '500px' }}
-            dangerouslySetInnerHTML={{ __html: previewHtml }}
-          />
-        </div>
+        </>
       )}
 
       {/* Email History */}
@@ -665,7 +715,7 @@ export default function SendRFQEmail() {
                   const vendorName = vendor
                     ? (vendor.vendor_name || vendor.legal_name || vendor.name || vendor.vendor_code)
                     : (log.vendor_name || log.recipient || `Vendor ${log.vendor_id || log.vendor || '-'}`);
-                  const logStatus = log.status || (log.success ? 'Sent' : 'Failed');
+                  const logStatus = log.status || (log.email_sent ? 'Sent' : (log.success ? 'Sent' : 'Failed'));
                   return (
                     <tr key={log.id || idx} className="hover:bg-slate-50">
                       <td className="py-2 px-3 font-medium text-slate-800">{vendorName}</td>

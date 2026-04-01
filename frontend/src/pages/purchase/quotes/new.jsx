@@ -6,6 +6,7 @@ import PageHeader from '../../../components/common/PageHeader';
 import apiClient from '../../../utils/api.js';
 import { cleanFormData, getApiErrorMessage } from '../../../utils/formHelpers.js';
 import useLookup from '../../../hooks/useLookup.js';
+import FileAttachments, { uploadPendingFiles } from '../components/FileAttachments';
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */
@@ -139,6 +140,7 @@ export default function CreateQuoteResponse() {
   const fileInputRef = useRef(null);
 
   const [isLoading, setIsLoading] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState([]);
   const [fillMode, setFillMode] = useState('manual'); // 'manual' or 'autofill'
   const [formData, setFormData] = useState({
     rfq: '',
@@ -289,8 +291,6 @@ export default function CreateQuoteResponse() {
     setLineItems(prev => prev.filter((_, i) => i !== idx));
   };
 
-  /* ---------- Attachments state ---------- */
-  const [attachments, setAttachments] = useState([]);
 
   /* ---------- File-upload state ---------- */
   const [uploadedFile, setUploadedFile] = useState(null);
@@ -711,20 +711,8 @@ export default function CreateQuoteResponse() {
         }
       }
 
-      // Upload attachments if any
-      if (attachments.length > 0) {
-        for (const file of attachments) {
-          try {
-            const fd = new FormData();
-            fd.append('file', file);
-            fd.append('quote', quoteId);
-            await apiClient.post(`/api/purchase/quotes/${quoteId}/attachments/`, fd, {
-              headers: { 'Content-Type': 'multipart/form-data' },
-            });
-          } catch (attErr) {
-            console.error('Failed to upload attachment:', attErr.response?.data);
-          }
-        }
+      if (pendingAttachments.length > 0) {
+        await uploadPendingFiles('QUOTE', quoteId, pendingAttachments);
       }
 
       toast.success(isEditMode ? 'Quote updated!' : `Quote created with ${validLines.length} line item(s)!`);
@@ -1112,11 +1100,11 @@ export default function CreateQuoteResponse() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center">
-                  Payment Terms <span className="text-red-500 ml-0.5">*</span>
+                  Payment Terms
                   <AutoFillDot confidence={autoFilledFields.payment_terms} />
                   {fieldSources.payment_terms && <SourceTooltip text={fieldSources.payment_terms} />}
                 </label>
-                <select name="payment_terms" value={formData.payment_terms} onChange={handleChange} required className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                <select name="payment_terms" value={formData.payment_terms} onChange={handleChange} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
                   <option value="">Select Payment Terms</option>
                   <option value="NET_15">Net 15</option>
                   <option value="NET_30">Net 30</option>
@@ -1271,47 +1259,7 @@ export default function CreateQuoteResponse() {
             );
           })()}
 
-          {/* Attachments */}
-          <div>
-            <h3 className="text-lg font-semibold text-slate-800 mb-4 pb-2 border-b">Attachments</h3>
-            <div className="space-y-3">
-              <div>
-                <input
-                  id="attachment-input"
-                  type="file"
-                  multiple
-                  onChange={(e) => {
-                    const files = Array.from(e.target.files || []);
-                    setAttachments(prev => [...prev, ...files]);
-                    e.target.value = '';
-                  }}
-                  className="hidden"
-                />
-                <button
-                  type="button"
-                  onClick={() => document.getElementById('attachment-input').click()}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-300 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
-                  Choose Files
-                </button>
-              </div>
-              {attachments.length > 0 && (
-                <div className="space-y-2">
-                  {attachments.map((file, idx) => (
-                    <div key={idx} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2 text-sm">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-medium bg-slate-200 px-1.5 py-0.5 rounded">{file.name.split('.').pop().toUpperCase()}</span>
-                        <span className="text-slate-700">{file.name}</span>
-                        <span className="text-slate-400 text-xs">({(file.size / 1024).toFixed(1)} KB)</span>
-                      </div>
-                      <button type="button" onClick={() => setAttachments(prev => prev.filter((_, i) => i !== idx))} className="text-red-500 hover:text-red-700 text-xs">Remove</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+          <FileAttachments module="QUOTE" recordId={id || null} onPendingChange={setPendingAttachments} />
 
           <div className="flex justify-end gap-3 pt-4 border-t">
             <button type="button" onClick={() => navigate(-1)} className="px-6 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button>

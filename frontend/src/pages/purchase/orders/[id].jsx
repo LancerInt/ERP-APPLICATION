@@ -15,6 +15,7 @@ import MainLayout from '../../../components/layout/MainLayout';
 import StatusBadge from '../../../components/common/StatusBadge';
 import apiClient from '../../../utils/api.js';
 import usePermissions from '../../../hooks/usePermissions.js';
+import FileAttachments from '../components/FileAttachments';
 
 export default function PurchaseOrderDetail() {
   const { id } = useParams();
@@ -91,7 +92,7 @@ export default function PurchaseOrderDetail() {
   const canApprovePO = isDraft && hasEditPerm;
   const canIssuePO = isApproved && hasEditPerm;
   const canRejectPO = (isDraft || isApproved) && hasEditPerm && !isCancelled;
-  const canSendEmail = (isApproved || isIssued) && !isCancelled && !isClosed;
+  const canSendEmail = (isApproved || isIssued) && !isCancelled && !isClosed && !po?.email_sent;
 
   // Handle approve
   const handleApprove = async () => {
@@ -235,8 +236,8 @@ export default function PurchaseOrderDetail() {
 
           {/* Action Buttons */}
           <div className="flex items-center gap-3 flex-wrap ml-8 sm:ml-0">
-            {/* Edit button */}
-            {hasEditPerm && !isEditing && (
+            {/* Edit & Delete buttons — only for DRAFT */}
+            {hasEditPerm && !isEditing && isDraft && (
               <>
                 <button
                   onClick={handleEditToggle}
@@ -277,17 +278,6 @@ export default function PurchaseOrderDetail() {
               </button>
             )}
 
-            {/* Issue button */}
-            {canIssuePO && (
-              <button
-                onClick={handleIssue}
-                disabled={isIssuing}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Send size={16} />
-                {isIssuing ? 'Issuing...' : 'Issue'}
-              </button>
-            )}
 
             {/* Send Email button */}
             {canSendEmail && (
@@ -298,6 +288,12 @@ export default function PurchaseOrderDetail() {
                 <Mail size={16} />
                 Send Email
               </button>
+            )}
+            {po?.email_sent && (
+              <span className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 rounded-lg text-sm font-medium border border-emerald-200">
+                <CheckCircle size={16} />
+                Email Sent
+              </span>
             )}
 
             {/* Reject button removed */}
@@ -530,6 +526,8 @@ export default function PurchaseOrderDetail() {
           </div>
         </div>
       </div>
+
+      <FileAttachments module="PO" recordId={id} />
     </MainLayout>
   );
 }

@@ -8,6 +8,7 @@ import apiClient from '../../../utils/api.js';
 import { getApiErrorMessage } from '../../../utils/formHelpers.js';
 import useLookup from '../../../hooks/useLookup.js';
 import usePermissions from '../../../hooks/usePermissions.js';
+import FileAttachments, { uploadPendingFiles } from '../components/FileAttachments';
 
 export default function CreatePurchaseRequest() {
   const navigate = useNavigate();
@@ -15,8 +16,11 @@ export default function CreatePurchaseRequest() {
   const [selectedCompany, setSelectedCompany] = useState('');
   const { options: companyOptions } = useLookup('/api/companies/');
   const { options: productOptions, raw: productList } = useLookup('/api/products/');
+  const { options: vendorOptions } = useLookup('/api/vendors/');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState([]);
   const [allowRfqSkip, setAllowRfqSkip] = useState(false);
+  const [preferredVendor, setPreferredVendor] = useState('');
   const [formData, setFormData] = useState({
     warehouse: '',
     godown: '',
@@ -80,6 +84,7 @@ export default function CreatePurchaseRequest() {
         justification: formData.justification || '',
         notes: formData.notes || '',
         allow_rfq_skip: allowRfqSkip,
+        preferred_vendor: allowRfqSkip && preferredVendor ? preferredVendor : null,
       };
 
       Object.keys(payload).forEach(k => {
@@ -92,24 +97,31 @@ export default function CreatePurchaseRequest() {
       const prNo = res.data.pr_no || '';
 
       // 2. Add line items to PR
-      const validLines = lineItems.filter(l => l.product);
+      const validLines = lineItems.filter(l => l.product && l.product.trim() !== '');
+      if (validLines.length === 0) {
+        toast.error('No products selected in line items. Please select at least one product.');
+      }
       let linesAdded = 0;
       for (const line of validLines) {
         try {
-          await apiClient.post(`/api/purchase/requests/${prId}/add-line/`, {
+          const linePayload = {
             product_service: line.product,
-            quantity_requested: line.quantity || 1,
+            quantity_requested: Number(line.quantity) || 1,
             uom: line.uom || 'KG',
             description_override: line.description || '',
-          });
+          };
+          await apiClient.post(`/api/purchase/requests/${prId}/add-line/`, linePayload);
           linesAdded++;
         } catch (lineErr) {
-          console.error('Failed to add line item:', lineErr.response?.data);
-          toast.error(`Failed to add line item: ${lineErr.response?.data?.error || 'Unknown error'}`);
+          const errDetail = lineErr.response?.data;
+          const errMsg = typeof errDetail === 'object' ? (errDetail.error || JSON.stringify(errDetail)) : String(errDetail);
+          console.error('Failed to add line item:', errDetail);
+          toast.error(`Line item failed: ${errMsg}`);
         }
       }
-      if (validLines.length > 0 && linesAdded === 0) {
-        toast.error('No line items were added. Please check product selections.');
+
+      if (pendingAttachments.length > 0) {
+        await uploadPendingFiles('PR', prId, pendingAttachments);
       }
 
       toast.success(`Purchase Request ${prNo} created with ${validLines.length} line items!${allowRfqSkip ? ' Use "Allow RFQ Skip" to approve and create PO.' : ''}`);
@@ -139,7 +151,7 @@ export default function CreatePurchaseRequest() {
 
       {/* Allow RFQ Skip Toggle */}
       <div
-        onClick={() => setAllowRfqSkip(prev => !prev)}
+        onClick={() => { setAllowRfqSkip(prev => { if (prev) setPreferredVendor(''); return !prev; }); }}
         className={`mb-4 flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${
           allowRfqSkip
             ? 'bg-amber-50 border-amber-300 shadow-sm'
@@ -222,6 +234,23 @@ export default function CreatePurchaseRequest() {
               <label className="block text-sm font-medium text-slate-700 mb-1">Required By Date</label>
               <input type="date" name="required_by_date" value={formData.required_by_date} onChange={handleChange} className={inputClass} />
             </div>
+            {allowRfqSkip && (
+              <div>
+                <label className="block text-sm font-medium text-amber-700 mb-1">
+                  Vendor <span className="text-red-500">*</span>
+                  <span className="text-xs text-amber-500 font-normal ml-1">(for direct PO)</span>
+                </label>
+                <select
+                  value={preferredVendor}
+                  onChange={(e) => setPreferredVendor(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 border border-amber-300 bg-amber-50 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                >
+                  <option value="">Select Vendor</option>
+                  {vendorOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+            )}
             <div className="md:col-span-2 lg:col-span-3">
               <label className="block text-sm font-medium text-slate-700 mb-1">Justification</label>
               <textarea name="justification" value={formData.justification} onChange={handleChange} rows={2} className={inputClass} placeholder="Reason for this purchase request..." />
@@ -294,6 +323,8 @@ export default function CreatePurchaseRequest() {
             <div className="text-center py-6 text-slate-400">No line items. Click "Add Item" to begin.</div>
           )}
         </div>
+
+        <FileAttachments module="PR" recordId={null} onPendingChange={setPendingAttachments} />
 
         {/* Actions */}
         <div className="flex justify-end gap-3">

@@ -7,6 +7,7 @@ import PageHeader from '../../../components/common/PageHeader';
 import apiClient from '../../../utils/api.js';
 import { cleanFormData, getApiErrorMessage } from '../../../utils/formHelpers.js';
 import useLookup from '../../../hooks/useLookup.js';
+import FileAttachments, { uploadPendingFiles } from '../components/FileAttachments';
 
 const inputClass = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500';
 
@@ -76,6 +77,7 @@ export default function CreateReceiptAdvice() {
   const contractorVendorOptions = contractorOptions.length > 0 ? contractorOptions : vendorOptions;
   const { options: productOptions } = useLookup('/api/products/');
   const [isLoading, setIsLoading] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState([]);
 
   const [formData, setFormData] = useState({
     po_no: '',
@@ -233,7 +235,13 @@ export default function CreateReceiptAdvice() {
         loading_unloading_wages: wageLines.filter(l => l.contractor_vendor).map(l => cleanFormData(l)),
       };
       if (import.meta.env.DEV) console.log('[CreateReceiptAdvice] payload:', payload);
-      await apiClient.post('/api/purchase/receipts/', payload);
+      const res = await apiClient.post('/api/purchase/receipts/', payload);
+      const newId = res.data?.id;
+
+      if (pendingAttachments.length > 0 && newId) {
+        await uploadPendingFiles('RECEIPT', newId, pendingAttachments);
+      }
+
       toast.success('Receipt Advice created successfully!');
       navigate('/purchase/receipts');
     } catch (error) {
@@ -649,6 +657,8 @@ export default function CreateReceiptAdvice() {
               </div>
             </div>
           </div>
+
+          <FileAttachments module="RECEIPT" recordId={null} onPendingChange={setPendingAttachments} />
 
           {/* Form Actions */}
           <div className="flex justify-end gap-3 pt-4 border-t">

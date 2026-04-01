@@ -6,6 +6,7 @@ import PageHeader from '../../../components/common/PageHeader';
 import StatusBadge from '../../../components/common/StatusBadge';
 import apiClient from '../../../utils/api.js';
 import usePermissions from '../../../hooks/usePermissions.js';
+import FileAttachments from '../components/FileAttachments';
 
 export default function VendorPaymentDetail() {
   const { id } = useParams();
@@ -438,6 +439,8 @@ export default function VendorPaymentDetail() {
           </div>
         </div>
       )}
+
+      <FileAttachments module="PAYMENT" recordId={id} />
     </MainLayout>
   );
 }

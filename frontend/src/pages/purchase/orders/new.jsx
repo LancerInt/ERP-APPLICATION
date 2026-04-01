@@ -7,6 +7,7 @@ import apiClient from '../../../utils/api.js';
 import { cleanFormData, getApiErrorMessage } from '../../../utils/formHelpers.js';
 import useLookup from '../../../hooks/useLookup.js';
 import { Plus, Trash2, SkipForward } from 'lucide-react';
+import FileAttachments, { uploadPendingFiles } from '../components/FileAttachments';
 
 export default function CreatePurchaseOrder() {
   const navigate = useNavigate();
@@ -19,6 +20,7 @@ export default function CreatePurchaseOrder() {
   const { options: transporterOptions } = useLookup('/api/transporters/');
   const { options: productOptions } = useLookup('/api/products/');
   const [isLoading, setIsLoading] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState([]);
   const [skipRfqData, setSkipRfqData] = useState(null);
 
   const today = new Date().toISOString().split('T')[0];
@@ -156,6 +158,10 @@ export default function CreatePurchaseOrder() {
         await Promise.all(linePromises);
       }
 
+      if (pendingAttachments.length > 0 && poId) {
+        await uploadPendingFiles('PO', poId, pendingAttachments);
+      }
+
       toast.success(isSkipRfq ? 'Purchase Order created (RFQ Skipped)!' : 'Purchase Order created successfully!');
       navigate('/purchase/orders');
     } catch (error) {
@@ -270,8 +276,8 @@ export default function CreatePurchaseOrder() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Payment Terms <span className="text-red-500">*</span></label>
-                <select name="payment_terms" value={formData.payment_terms} onChange={handleChange} required className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                <label className="block text-sm font-medium text-slate-700 mb-1">Payment Terms</label>
+                <select name="payment_terms" value={formData.payment_terms} onChange={handleChange} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
                   <option value="">Select Payment Terms</option>
                   <option value="NET_15">Net 15</option>
                   <option value="NET_30">Net 30</option>
@@ -350,6 +356,8 @@ export default function CreatePurchaseOrder() {
               </div>
             </div>
           </div>
+
+          <FileAttachments module="PO" recordId={null} onPendingChange={setPendingAttachments} />
 
           <div className="flex justify-end gap-3 pt-4 border-t">
             <button type="button" onClick={() => navigate(-1)} className="px-6 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button>

@@ -122,6 +122,14 @@ class PurchaseRequest(BaseModel):
         default=False,
         help_text="If True, approval creates PO directly instead of RFQ"
     )
+    preferred_vendor = models.ForeignKey(
+        'master.Vendor',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='purchase_requests',
+        help_text="Preferred vendor for direct PO creation (used with RFQ skip)"
+    )
     linked_rfq = models.ForeignKey(
         'purchase.RFQHeader',
         on_delete=models.SET_NULL,
@@ -2099,3 +2107,42 @@ class VendorCreditLine(BaseModel):
 
     def __str__(self):
         return f"{self.advice.advice_no} - {self.get_tax_type_display()}"
+
+
+class PurchaseAttachment(BaseModel):
+    """File attachments for any purchase module document."""
+
+    MODULE_CHOICES = (
+        ('PR', _('Purchase Request')),
+        ('RFQ', _('RFQ')),
+        ('QUOTE', _('Quote Response')),
+        ('EVALUATION', _('Evaluation')),
+        ('PO', _('Purchase Order')),
+        ('RECEIPT', _('Receipt Advice')),
+        ('FREIGHT', _('Freight')),
+        ('BILL', _('Vendor Bill')),
+        ('PAYMENT', _('Payment Made')),
+        ('CREDIT', _('Vendor Credit')),
+    )
+
+    module = models.CharField(max_length=20, choices=MODULE_CHOICES, db_index=True)
+    record_id = models.UUIDField(db_index=True, help_text="ID of the related record")
+    file = models.FileField(upload_to='purchase/attachments/%Y/%m/')
+    file_name = models.CharField(max_length=255)
+    file_size = models.PositiveIntegerField(default=0, help_text="File size in bytes")
+    file_type = models.CharField(max_length=100, blank=True, default='')
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='purchase_attachments'
+    )
+
+    class Meta:
+        db_table = 'purchase_attachment'
+        ordering = ['-created_at']
+        verbose_name = _('Purchase Attachment')
+        verbose_name_plural = _('Purchase Attachments')
+
+    def __str__(self):
+        return f"{self.module} - {self.file_name}"

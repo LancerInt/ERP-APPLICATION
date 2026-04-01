@@ -7,6 +7,7 @@ import PageHeader from '../../../components/common/PageHeader';
 import StatusBadge from '../../../components/common/StatusBadge';
 import apiClient from '../../../utils/api.js';
 import useLookup from '../../../hooks/useLookup.js';
+import FileAttachments from '../components/FileAttachments';
 
 export default function VendorBillDetail() {
   const { id } = useParams();
@@ -568,6 +569,8 @@ export default function VendorBillDetail() {
           </div>
         </div>
       )}
+
+      <FileAttachments module="BILL" recordId={id} />
     </MainLayout>
   );
 }

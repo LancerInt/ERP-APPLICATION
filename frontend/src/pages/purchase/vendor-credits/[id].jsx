@@ -7,6 +7,7 @@ import PageHeader from '../../../components/common/PageHeader';
 import StatusBadge from '../../../components/common/StatusBadge';
 import apiClient from '../../../utils/api.js';
 import useLookup from '../../../hooks/useLookup.js';
+import FileAttachments from '../components/FileAttachments';
 
 const emptyCreditLine = { product: '', description: '', quantity: '', uom: 'KG', rate: '', tax_percent: '0', amount: '' };
 
@@ -519,6 +520,8 @@ export default function VendorCreditDetail() {
           </div>
         </div>
       )}
+
+      <FileAttachments module="CREDIT" recordId={id} />
     </MainLayout>
   );
 }

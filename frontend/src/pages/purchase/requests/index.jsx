@@ -9,7 +9,7 @@ import {
   FileText, GitBranch, X, Loader2, CheckCircle2, Clock, ChevronRight,
   ArrowRight, AlertTriangle, Package, Truck, CreditCard, Receipt,
   ShoppingCart, ClipboardList, Star, DollarSign, BarChart3, TrendingUp,
-  SkipForward,
+  SkipForward, List,
 } from 'lucide-react';
 import useApiData from '../../../hooks/useApiData.js';
 import usePermissions from '../../../hooks/usePermissions.js';
@@ -110,6 +110,24 @@ export default function PurchaseRequestList() {
   const [flowError, setFlowError] = useState(null);
   const [flowSelectedNode, setFlowSelectedNode] = useState(null);
 
+  // Line items modal state
+  const [lineItemsPr, setLineItemsPr] = useState(null); // { id, pr_no, lines }
+  const [lineItemsLoading, setLineItemsLoading] = useState(false);
+
+  const openLineItems = useCallback(async (row) => {
+    setLineItemsLoading(true);
+    setLineItemsPr({ id: row.id, pr_no: row.pr_no, lines: [] });
+    try {
+      const res = await apiClient.get(`/api/purchase/requests/${row.id}/`);
+      const lines = res.data.lines || res.data.line_items || [];
+      setLineItemsPr({ id: row.id, pr_no: row.pr_no, lines });
+    } catch {
+      setLineItemsPr(prev => prev ? { ...prev, lines: [] } : null);
+    } finally {
+      setLineItemsLoading(false);
+    }
+  }, []);
+
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this purchase request?')) return;
     try {
@@ -163,8 +181,6 @@ export default function PurchaseRequestList() {
   const columns = [
     { key: 'pr_no', label: 'PR Number', sortable: true },
     { key: 'warehouse_name', label: 'Warehouse', sortable: true },
-    { key: 'priority', label: 'Priority', sortable: true },
-    { key: 'required_by_date', label: 'Required By', sortable: true, render: (value) => value ? new Date(value).toLocaleDateString() : '-' },
     {
       key: 'approval_status', label: 'Status', sortable: true,
       render: (value) => <StatusBadge status={value || 'DRAFT'} />,
@@ -179,12 +195,12 @@ export default function PurchaseRequestList() {
         <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
           <ActionButtons moduleName="Purchase Request" editPath={`/purchase/requests/${row.id}`} onDelete={() => handleDelete(row.id)} row={row} />
           <button
-            onClick={() => navigate(`/purchase/quotes/new${row.linked_rfq ? `?rfq=${row.linked_rfq}` : ''}`)}
-            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-purple-700 bg-purple-50 rounded-lg hover:bg-purple-100 transition"
-            title="Create Quote Response"
+            onClick={() => openLineItems(row)}
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-teal-700 bg-teal-50 rounded-lg hover:bg-teal-100 transition"
+            title="View Line Items"
           >
-            <FileText size={13} />
-            Quote Response
+            <List size={13} />
+            Products
           </button>
           <button
             onClick={() => openFlow(row)}
@@ -222,6 +238,69 @@ export default function PurchaseRequestList() {
         data={filteredData}
         onRowClick={(row) => navigate(`/purchase/requests/${row.id}`)}
       />
+
+      {/* Line Items Modal */}
+      {lineItemsPr && (
+        <>
+          <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setLineItemsPr(null)} />
+          <div className="fixed inset-x-4 top-1/2 -translate-y-1/2 md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:w-[700px] max-h-[80vh] bg-white rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-teal-50 to-white flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-teal-500 flex items-center justify-center">
+                  <List size={20} className="text-white" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-800">Product Line Items</h2>
+                  <p className="text-sm text-slate-500">{lineItemsPr.pr_no}</p>
+                </div>
+              </div>
+              <button onClick={() => setLineItemsPr(null)} className="p-2 hover:bg-slate-100 rounded-lg transition">
+                <X size={20} className="text-slate-500" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              {lineItemsLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 size={32} className="animate-spin text-teal-500" />
+                </div>
+              ) : lineItemsPr.lines.length === 0 ? (
+                <p className="text-center text-slate-400 py-12">No line items found.</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50 border-b">
+                      <th className="text-left px-3 py-2 font-medium text-slate-600 w-10">#</th>
+                      <th className="text-left px-3 py-2 font-medium text-slate-600">Product</th>
+                      <th className="text-left px-3 py-2 font-medium text-slate-600">Description</th>
+                      <th className="text-right px-3 py-2 font-medium text-slate-600">Qty</th>
+                      <th className="text-left px-3 py-2 font-medium text-slate-600">UOM</th>
+                      <th className="text-left px-3 py-2 font-medium text-slate-600">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lineItemsPr.lines.map((line, i) => (
+                      <tr key={line.id || i} className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="px-3 py-2.5 text-slate-500">{line.line_no || i + 1}</td>
+                        <td className="px-3 py-2.5 font-medium text-slate-800">{line.product_name || line.product_code || '-'}</td>
+                        <td className="px-3 py-2.5 text-slate-500">{line.description_override || '-'}</td>
+                        <td className="px-3 py-2.5 text-right font-medium">{line.quantity_requested}</td>
+                        <td className="px-3 py-2.5 text-slate-600">{line.uom || '-'}</td>
+                        <td className="px-3 py-2.5">
+                          <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
+                            line.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-700' :
+                            line.status === 'REJECTED' ? 'bg-red-100 text-red-700' :
+                            'bg-slate-100 text-slate-600'
+                          }`}>{line.status || 'PENDING'}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Flow Modal */}
       {flowPr && (

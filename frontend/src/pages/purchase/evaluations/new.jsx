@@ -6,12 +6,14 @@ import PageHeader from '../../../components/common/PageHeader';
 import apiClient from '../../../utils/api.js';
 import { cleanFormData, getApiErrorMessage } from '../../../utils/formHelpers.js';
 import useLookup from '../../../hooks/useLookup.js';
+import FileAttachments, { uploadPendingFiles } from '../components/FileAttachments';
 
 export default function CreateQuoteEvaluation() {
   const navigate = useNavigate();
   const { options: rfqOptions } = useLookup('/api/purchase/rfq/');
   const { options: vendorOptions } = useLookup('/api/vendors/');
   const [isLoading, setIsLoading] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState([]);
   const [formData, setFormData] = useState({
     rfq: '',
     evaluation_date: '',
@@ -31,7 +33,13 @@ export default function CreateQuoteEvaluation() {
     try {
       const payload = cleanFormData(formData);
       if (import.meta.env.DEV) console.log('[CreateQuoteEvaluation] payload:', payload);
-      await apiClient.post('/api/purchase/evaluations/', payload);
+      const res = await apiClient.post('/api/purchase/evaluations/', payload);
+      const newId = res.data?.id;
+
+      if (pendingAttachments.length > 0 && newId) {
+        await uploadPendingFiles('EVALUATION', newId, pendingAttachments);
+      }
+
       toast.success('Quote Evaluation created successfully!');
       navigate('/purchase/evaluations');
     } catch (error) {
@@ -95,6 +103,8 @@ export default function CreateQuoteEvaluation() {
               </div>
             </div>
           </div>
+          <FileAttachments module="EVALUATION" recordId={null} onPendingChange={setPendingAttachments} />
+
           <div className="flex justify-end gap-3 pt-4 border-t">
             <button type="button" onClick={() => navigate(-1)} className="px-6 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
             <button type="submit" disabled={isLoading} className="px-6 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">{isLoading ? 'Saving...' : 'Save'}</button>

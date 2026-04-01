@@ -19,12 +19,14 @@ from .models import (
     ReceiptAdvice, ReceiptLine, FreightDetail,
     VendorPaymentAdvice, FreightAdviceInbound,
     VendorBill, PaymentMade, VendorCredit,
+    PurchaseAttachment,
 )
 from .serializers import (
     PurchaseRequestSerializer, RFQHeaderSerializer,
     QuoteResponseSerializer, QuoteEvaluationSerializer,
     PurchaseOrderSerializer, ReceiptAdviceSerializer,
-    VendorPaymentAdviceSerializer, FreightAdviceInboundSerializer
+    VendorPaymentAdviceSerializer, FreightAdviceInboundSerializer,
+    PurchaseAttachmentSerializer
 )
 from .services import (
     PurchaseRequestService, RFQService, QuoteEvaluationService,
@@ -240,6 +242,7 @@ class PurchaseRequestViewSet(viewsets.ModelViewSet):
                 company = pr.warehouse.company if pr.warehouse and hasattr(pr.warehouse, 'company') else None
                 if company:
                     po = PurchaseOrder(
+                        vendor=pr.preferred_vendor,
                         company=company,
                         warehouse=pr.warehouse,
                         currency='INR',
@@ -935,6 +938,60 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
             {'message': f'PO {po.po_no} deleted. PO number is now available for re-generation in Quote Evaluation.'},
             status=status.HTTP_200_OK
         )
+
+    @action(detail=True, methods=['post'], url_path='preview-email')
+    def preview_email(self, request, pk=None):
+        """Preview rendered PO email HTML before sending."""
+        po = self.get_object()
+        template_id = request.data.get('template_id')
+
+        if not template_id:
+            return Response({'error': 'template_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            from communications.models import EmailTemplate
+            from communications.services import TemplateEngine, PDFGenerator
+
+            template = EmailTemplate.objects.get(pk=template_id)
+            company = po.company
+            vendor = po.vendor
+
+            context = {
+                'company_name': company.legal_name if company else '',
+                'company_address': str(getattr(company, 'registered_address', '') or '') if company else '',
+                'company_gstin': getattr(company, 'gstin', '') or '' if company else '',
+                'company_phone': getattr(company, 'contact_phone', '') or '' if company else '',
+                'company_email': getattr(company, 'contact_email', '') or '' if company else '',
+                'po_number': po.po_no,
+                'po_date': po.po_date.strftime('%d-%m-%Y') if po.po_date else '',
+                'vendor_name': vendor.vendor_name if vendor else 'N/A',
+                'vendor_address': str(getattr(vendor, 'address', '') or '') if vendor else '',
+                'vendor_email': getattr(vendor, 'contact_email', '') or '' if vendor else '',
+                'date': po.po_date.strftime('%d-%m-%Y') if po.po_date else '',
+                'payment_terms': po.payment_terms or '',
+                'freight_terms': po.freight_terms or '',
+                'notes': po.terms_and_conditions or '',
+                'product_table': self._build_po_product_table(po),
+            }
+
+            engine = TemplateEngine()
+            rendered_subject = engine.render(template.subject, context)
+            rendered_body = engine.render(template.body_html, context)
+
+            # Also build full PDF HTML for preview
+            full_html = PDFGenerator.build_full_html(template, context)
+
+            return Response({
+                'subject': rendered_subject,
+                'body_html': rendered_body,
+                'pdf_html': full_html,
+                'context_data': {k: v for k, v in context.items() if k != 'product_table'},
+            })
+
+        except EmailTemplate.DoesNotExist:
+            return Response({'error': 'Template not found'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': f'Preview failed: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=True, methods=['post'], url_path='send-email')
     def send_email(self, request, pk=None):
@@ -2516,3 +2573,37 @@ class PurchaseLifecycleGraphView(APIView):
                     },
                 })
             edges.append({'from': bill_node_id, 'to': cr_node_id, 'label': cr.credit_type})
+
+
+class PurchaseAttachmentViewSet(viewsets.ModelViewSet):
+    """ViewSet for uploading, listing, and deleting attachments for any purchase document."""
+
+    serializer_class = PurchaseAttachmentSerializer
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get_queryset(self):
+        qs = PurchaseAttachment.objects.filter(is_active=True)
+        module = self.request.query_params.get('module')
+        record_id = self.request.query_params.get('record_id')
+        if module:
+            qs = qs.filter(module=module)
+        if record_id:
+            qs = qs.filter(record_id=record_id)
+        return qs
+
+    def perform_create(self, serializer):
+        f = self.request.FILES.get('file')
+        if not f:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({'file': 'File is required'})
+        serializer.save(
+            file=f,
+            file_name=f.name,
+            file_size=f.size,
+            file_type=f.content_type or '',
+            uploaded_by=self.request.user,
+        )
+
+    def perform_destroy(self, instance):
+        instance.soft_delete()

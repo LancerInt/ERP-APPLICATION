@@ -6,6 +6,7 @@ import PageHeader from '../../../components/common/PageHeader';
 import apiClient from '../../../utils/api.js';
 import { cleanFormData, getApiErrorMessage } from '../../../utils/formHelpers.js';
 import useLookup from '../../../hooks/useLookup.js';
+import FileAttachments, { uploadPendingFiles } from '../components/FileAttachments';
 
 export default function CreateVendorCredit() {
   const navigate = useNavigate();
@@ -17,6 +18,7 @@ export default function CreateVendorCredit() {
   const productOptions = productRaw.map(p => ({ value: p.id, label: `${p.sku_code || ''} - ${p.product_name}`, uom: p.uom || '' }));
 
   const [isLoading, setIsLoading] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState([]);
   const [formData, setFormData] = useState({
     vendor: '',
     credit_type: 'CREDIT',
@@ -102,7 +104,13 @@ export default function CreateVendorCredit() {
           })),
         });
       }
-      await apiClient.post('/api/purchase/vendor-credits/', payload);
+      const res = await apiClient.post('/api/purchase/vendor-credits/', payload);
+      const newId = res.data?.id;
+
+      if (pendingAttachments.length > 0 && newId) {
+        await uploadPendingFiles('CREDIT', newId, pendingAttachments);
+      }
+
       toast.success('Vendor Credit created successfully!');
       navigate('/purchase/vendor-credits');
     } catch (error) {
@@ -271,6 +279,8 @@ export default function CreateVendorCredit() {
             <label className={labelClass}>Notes</label>
             <textarea name="notes" value={formData.notes} onChange={handleChange} rows={3} className={inputClass} placeholder="Additional notes..." />
           </div>
+
+          <FileAttachments module="CREDIT" recordId={null} onPendingChange={setPendingAttachments} />
 
           <div className="flex justify-end gap-3 pt-4 border-t">
             <button type="button" onClick={() => navigate(-1)} className="px-6 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
