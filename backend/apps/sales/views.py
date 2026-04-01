@@ -20,6 +20,7 @@ from .models import (
 )
 from .serializers import (
     CustomerPOUploadSerializer,
+    CreateCustomerPOSerializer,
     SalesOrderListSerializer,
     SalesOrderDetailSerializer,
     CreateSalesOrderSerializer,
@@ -56,27 +57,41 @@ from .selectors import (
 
 class CustomerPOUploadViewSet(viewsets.ModelViewSet):
     """
-    ViewSet for customer PO uploads.
-    Handles file upload, parsing, and conversion to sales orders.
+    ViewSet for Customer PO.
+    Full CRUD with nested line items.
     """
 
     queryset = CustomerPOUpload.objects.all()
-    serializer_class = CustomerPOUploadSerializer
     permission_classes = [permissions.IsAuthenticated, HasModulePermission]
     module_name = 'Customer PO'
-    filterset_fields = ['customer', 'status', 'manual_review_required']
-    search_fields = ['upload_id', 'parsed_po_number', 'customer__name']
-    ordering_fields = ['upload_date', 'status']
+    filterset_fields = ['customer', 'company', 'status']
+    search_fields = ['upload_id', 'po_number', 'customer__customer_name']
+    ordering_fields = ['upload_date', 'po_date', 'status']
     ordering = ['-upload_date']
 
     def get_queryset(self):
-        """Filter based on user permissions"""
         return (
             CustomerPOUpload.objects
-            .select_related('customer', 'linked_sales_order')
+            .select_related('customer', 'company', 'warehouse', 'linked_sales_order')
             .prefetch_related('parsed_lines__parsed_sku')
             .filter(is_active=True)
         )
+
+    def get_serializer_class(self):
+        if self.action in ('create', 'update', 'partial_update'):
+            return CreateCustomerPOSerializer
+        return CustomerPOUploadSerializer
+
+    def perform_destroy(self, instance):
+        """Delete Customer PO and rollback: unlink from any SOs."""
+        from django.db import transaction as db_transaction
+        with db_transaction.atomic():
+            # Unlink from M2M SOs
+            for so in instance.linked_sales_orders.all():
+                so.customer_pos.remove(instance)
+            # Soft delete
+            instance.is_active = False
+            instance.save(update_fields=['is_active', 'updated_at'])
 
     @action(detail=True, methods=['post'])
     def trigger_parsing(self, request, pk=None):
@@ -170,6 +185,39 @@ class SalesOrderViewSet(viewsets.ModelViewSet):
         elif self.action == 'retrieve':
             return SalesOrderDetailSerializer
         return SalesOrderListSerializer
+
+    def perform_destroy(self, instance):
+        """Delete SO and rollback: delete linked DCs (which rollback their own reserved_qty),
+        unlink Customer POs back to CONFIRMED status."""
+        from django.db import transaction as db_transaction
+        from .models import DCLine
+
+        with db_transaction.atomic():
+            # 1. Delete all DCs linked to this SO (cascading rollback via DC's perform_destroy logic)
+            dc_ids = DCLine.objects.filter(
+                linked_so_line__so=instance
+            ).values_list('dc_id', flat=True).distinct()
+
+            for dc in DispatchChallan.objects.filter(id__in=dc_ids, is_active=True):
+                # Reverse reserved_qty for each DC line
+                for dc_line in dc.dc_lines.select_related('linked_so_line').all():
+                    if dc_line.linked_so_line:
+                        so_line = dc_line.linked_so_line
+                        so_line.reserved_qty = max(Decimal('0'), so_line.reserved_qty - dc_line.quantity_dispatched)
+                        so_line.save(update_fields=['reserved_qty', 'updated_at'])
+                dc.is_active = False
+                dc.save(update_fields=['is_active', 'updated_at'])
+
+            # 2. Unlink Customer POs (M2M) - set them back to CONFIRMED
+            for po in instance.customer_pos.all():
+                if po.status == 'CONVERTED':
+                    po.status = 'CONFIRMED'
+                    po.save(update_fields=['status', 'updated_at'])
+            instance.customer_pos.clear()
+
+            # 3. Soft delete the SO
+            instance.is_active = False
+            instance.save(update_fields=['is_active', 'updated_at'])
 
     @action(detail=False, methods=['get'])
     def next_so_number(self, request):
@@ -696,6 +744,30 @@ class DispatchChallanViewSet(viewsets.ModelViewSet):
             return DispatchChallanDetailSerializer
         return DispatchChallanListSerializer
 
+    def perform_destroy(self, instance):
+        """Delete DC and rollback SO: reverse reserved_qty and update SO status."""
+        from django.db import transaction as db_transaction
+
+        with db_transaction.atomic():
+            affected_sos = set()
+            # Reverse reserved_qty for all DC lines linked to SO lines
+            for dc_line in instance.dc_lines.select_related('linked_so_line__so').all():
+                if dc_line.linked_so_line:
+                    so_line = dc_line.linked_so_line
+                    so_line.reserved_qty = max(
+                        Decimal('0'), so_line.reserved_qty - dc_line.quantity_dispatched
+                    )
+                    so_line.save(update_fields=['reserved_qty', 'updated_at'])
+                    affected_sos.add(so_line.so)
+
+            # Update SO dispatch status (CLOSED → APPROVED, PARTIALLY_DISPATCHED → APPROVED, etc.)
+            for so in affected_sos:
+                so.update_dispatch_status()
+
+            # Soft delete the DC
+            instance.is_active = False
+            instance.save(update_fields=['is_active', 'updated_at'])
+
     @action(detail=True, methods=['post'])
     def release(self, request, pk=None):
         """Release DC for dispatch"""
@@ -808,6 +880,18 @@ class SalesFreightDetailViewSet(viewsets.ModelViewSet):
             return SalesFreightDetailDetailSerializer
         return SalesFreightDetailListSerializer
 
+    def perform_destroy(self, instance):
+        """Delete Freight Detail and rollback: soft-delete linked Outward Freights."""
+        from django.db import transaction as db_transaction
+        with db_transaction.atomic():
+            # Soft-delete any linked Outward Freights
+            for of in instance.outward_freights.filter(is_active=True):
+                of.is_active = False
+                of.save(update_fields=['is_active', 'updated_at'])
+            # Soft delete
+            instance.is_active = False
+            instance.save(update_fields=['is_active', 'updated_at'])
+
     @action(detail=False, methods=['get'], url_path='available-dcs')
     def available_dcs(self, request):
         """Get DCs not yet linked to any Freight Detail.
@@ -865,6 +949,22 @@ class FreightAdviceOutboundViewSet(viewsets.ModelViewSet):
         elif self.action == 'retrieve':
             return FreightAdviceOutboundDetailSerializer
         return FreightAdviceOutboundListSerializer
+
+    def perform_destroy(self, instance):
+        """Delete Outward Freight and rollback: update linked Freight Detail paid/balance."""
+        from django.db import transaction as db_transaction
+        with db_transaction.atomic():
+            # If linked to a Freight Detail, update its paid amount
+            if instance.freight_detail:
+                fd = instance.freight_detail
+                fd.freight_paid = max(Decimal('0'), fd.freight_paid - instance.total_paid)
+                fd.balance_freight = max(Decimal('0'), fd.total_freight - fd.freight_paid)
+                if fd.status == 'COMPLETED':
+                    fd.status = 'IN_PROGRESS' if fd.freight_paid > 0 else 'PENDING'
+                fd.save(update_fields=['freight_paid', 'balance_freight', 'status', 'updated_at'])
+            # Soft delete
+            instance.is_active = False
+            instance.save(update_fields=['is_active', 'updated_at'])
 
     # --- Payment CRUD ---
     @action(detail=True, methods=['post'], url_path='add-payment')

@@ -48,6 +48,7 @@ const SIDEBAR_SECTIONS = [
     items: [
       { name: 'Customer PO', path: '/sales/customer-po', module: 'Customer PO', icon: FileText },
       { name: 'Sales Orders', path: '/sales/orders', module: 'Sales Order', icon: ShoppingCart },
+      { name: 'Flow Dashboard', path: '/sales/flow', module: 'Sales Order', icon: GitBranch },
       { name: 'Dispatch Challan', path: '/sales/dc', module: 'Dispatch Challan', icon: Truck },
       { name: 'Invoice', path: '/sales/invoices', module: 'Sales Invoice', icon: Receipt },
       { name: 'Freight Details', path: '/sales/freight-details', module: 'Freight Advice', icon: Truck },

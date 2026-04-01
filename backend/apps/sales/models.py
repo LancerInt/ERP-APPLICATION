@@ -12,30 +12,46 @@ User = get_user_model()
 
 class CustomerPOUpload(BaseModel):
     """
-    Represents a customer purchase order upload.
-    Handles both PO file storage and AI parsing results.
+    Customer Purchase Order.
+    Captures customer PO details, line items, and optional file attachment.
     """
 
     STATUS_CHOICES = [
-        ('UPLOADED', 'Uploaded'),
-        ('PARSED', 'Parsed'),
+        ('DRAFT', 'Draft'),
+        ('CONFIRMED', 'Confirmed'),
         ('CONVERTED', 'Converted to Sales Order'),
-        ('ARCHIVED', 'Archived'),
+        ('CANCELLED', 'Cancelled'),
     ]
 
     upload_id = models.CharField(
         max_length=50,
         unique=True,
         db_index=True,
-        help_text="Auto-generated unique PO upload identifier"
+        help_text="Auto-generated Customer PO number"
+    )
+    company = models.ForeignKey(
+        'core.Company',
+        on_delete=models.PROTECT,
+        related_name='customer_pos',
+        null=True,
+        blank=True,
+    )
+    warehouse = models.ForeignKey(
+        'core.Warehouse',
+        on_delete=models.PROTECT,
+        related_name='customer_pos',
+        null=True,
+        blank=True,
     )
     customer = models.ForeignKey(
         'master.Customer',
         on_delete=models.PROTECT,
         related_name='po_uploads'
     )
+    po_number = models.CharField(max_length=100, blank=True, default='', db_index=True, help_text="Customer PO number")
+    po_date = models.DateField(null=True, blank=True)
     upload_date = models.DateTimeField(auto_now_add=True, db_index=True)
-    po_file = models.FileField(upload_to='po_uploads/%Y/%m/%d/')
+    po_file = models.FileField(upload_to='po_uploads/%Y/%m/%d/', null=True, blank=True)
     ai_parser_confidence = models.DecimalField(
         max_digits=5,
         decimal_places=2,
@@ -46,13 +62,35 @@ class CustomerPOUpload(BaseModel):
     )
     parsed_po_number = models.CharField(max_length=100, blank=True, default='', db_index=True)
     parsed_po_date = models.DateField(null=True, blank=True)
+    price_list = models.ForeignKey(
+        'master.PriceList', on_delete=models.SET_NULL, null=True, blank=True, related_name='customer_pos'
+    )
+    freight_terms = models.CharField(max_length=100, blank=True, default='')
+    payment_terms = models.CharField(max_length=100, blank=True, default='')
+    currency = models.CharField(max_length=10, blank=True, default='INR')
+    required_ship_date = models.DateField(null=True, blank=True)
+    delivery_type = models.CharField(max_length=50, blank=True, default='', help_text="ex-factory, door delivery, etc.")
+    indent_no = models.CharField(max_length=100, blank=True, default='')
+    indent_date = models.DateField(null=True, blank=True)
+    party_code = models.CharField(max_length=50, blank=True, default='', help_text="Supplier/Party code from customer system")
+    delivery_due_date = models.DateField(null=True, blank=True)
+    sales_order_ref = models.CharField(max_length=100, blank=True, default='', help_text="Customer's Sales Order reference")
+    dispatched_through = models.CharField(max_length=255, blank=True, default='')
+    consignee_name = models.CharField(max_length=255, blank=True, default='', help_text="Ship to name - auto-filled from customer")
+    consignee_address = models.TextField(blank=True, default='', help_text="Ship to address - auto-filled from customer")
+    consignee_gstin = models.CharField(max_length=20, blank=True, default='')
+    billing_address = models.TextField(blank=True, default='', help_text="Company billing address")
+    billing_gstin = models.CharField(max_length=20, blank=True, default='')
+    special_instructions = models.TextField(blank=True, default='')
     delivery_location = models.CharField(max_length=500, blank=True, default='')
+    destination = models.CharField(max_length=255, blank=True, default='')
     manual_review_required = models.BooleanField(default=False, db_index=True)
     review_comments = models.TextField(blank=True, default='')
+    remarks = models.TextField(blank=True, default='')
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
-        default='UPLOADED',
+        default='DRAFT',
         db_index=True
     )
     linked_sales_order = models.OneToOneField(
@@ -113,6 +151,27 @@ class ParsedLine(BaseModel):
         blank=True,
         validators=[MinValueValidator(0)]
     )
+    item_code = models.CharField(max_length=50, blank=True, default='', help_text="Customer's item code")
+    hsn_code = models.CharField(max_length=20, blank=True, default='', help_text="HSN/SAC Code")
+    discount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0, validators=[MinValueValidator(0)]
+    )
+    gst = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0, validators=[MinValueValidator(0)],
+        help_text="Total GST % (SGST + CGST)"
+    )
+    sgst_percent = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0, validators=[MinValueValidator(0)]
+    )
+    cgst_percent = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0, validators=[MinValueValidator(0)]
+    )
+    igst_percent = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0, validators=[MinValueValidator(0)],
+        help_text="IGST % for inter-state"
+    )
+    delivery_schedule_date = models.DateField(null=True, blank=True)
+    line_remarks = models.TextField(blank=True, default='')
     parsed_sku = models.ForeignKey(
         'master.Product',
         on_delete=models.SET_NULL,
@@ -186,6 +245,12 @@ class SalesOrder(BaseModel):
         null=True,
         blank=True,
         related_name='sales_orders'
+    )
+    customer_pos = models.ManyToManyField(
+        CustomerPOUpload,
+        blank=True,
+        related_name='linked_sales_orders',
+        help_text="Multiple Customer POs linked to this SO"
     )
     so_date = models.DateField(auto_now_add=True, db_index=True)
     required_ship_date = models.DateField(null=True, blank=True)

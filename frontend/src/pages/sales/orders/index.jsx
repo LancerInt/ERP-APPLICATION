@@ -96,7 +96,7 @@ export default function SalesOrderList() {
           >
             <Eye size={15} />
           </button>
-          {canEdit('Sales Order') && row.approval_status === 'DRAFT' && (
+          {canEdit('Sales Order') && (
             <button
               onClick={(e) => { e.stopPropagation(); navigate(`/sales/orders/${row.id}/edit`); }}
               className="p-1.5 text-amber-600 hover:bg-amber-50 rounded transition"
@@ -105,7 +105,7 @@ export default function SalesOrderList() {
               <Pencil size={15} />
             </button>
           )}
-          {canDelete('Sales Order') && row.approval_status === 'DRAFT' && (
+          {canDelete('Sales Order') && (
             <button
               onClick={(e) => { e.stopPropagation(); handleDelete(row.id, row.so_no); }}
               className="p-1.5 text-red-500 hover:bg-red-50 rounded transition"

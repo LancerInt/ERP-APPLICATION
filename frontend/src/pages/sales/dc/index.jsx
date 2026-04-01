@@ -86,7 +86,7 @@ export default function DispatchChallanList() {
           >
             <Eye size={15} />
           </button>
-          {canEdit('Dispatch Challan') && row.status === 'DRAFT' && (
+          {canEdit('Dispatch Challan') && (
             <button
               onClick={(e) => { e.stopPropagation(); navigate(`/sales/dc/${row.id}/edit`); }}
               className="p-1.5 text-amber-600 hover:bg-amber-50 rounded transition"
@@ -95,7 +95,7 @@ export default function DispatchChallanList() {
               <Pencil size={15} />
             </button>
           )}
-          {canDelete('Dispatch Challan') && row.status === 'DRAFT' && (
+          {canDelete('Dispatch Challan') && (
             <button
               onClick={(e) => { e.stopPropagation(); handleDelete(row.id, row.dc_no); }}
               className="p-1.5 text-red-500 hover:bg-red-50 rounded transition"

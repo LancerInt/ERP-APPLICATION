@@ -47,6 +47,10 @@ export default function CreateSalesOrder() {
   const [filteredPriceLists, setFilteredPriceLists] = useState([]);
   const [priceLines, setPriceLines] = useState([]);
 
+  // Customer PO states
+  const [availablePOs, setAvailablePOs] = useState([]);
+  const [selectedPOIds, setSelectedPOIds] = useState([]);
+
   const [formData, setFormData] = useState({
     so_no: '',
     customer: '',
@@ -101,12 +105,14 @@ export default function CreateSalesOrder() {
     setPriceLines([]);
   }, [formData.company]);
 
-  // 2. Customer changed → fetch price lists for that customer
+  // 2. Customer changed → fetch price lists + available POs
   useEffect(() => {
     if (!formData.customer) {
       setFilteredPriceLists([]);
       setFormData(prev => ({ ...prev, price_list: '' }));
       setPriceLines([]);
+      setAvailablePOs([]);
+      setSelectedPOIds([]);
       return;
     }
     apiClient.get(`/api/price-lists/for_customer/?customer_id=${formData.customer}`)
@@ -115,8 +121,17 @@ export default function CreateSalesOrder() {
         setFilteredPriceLists(list.map(pl => ({ value: pl.id, label: pl.price_list_id })));
       })
       .catch(() => setFilteredPriceLists([]));
+    // Fetch available POs for this customer (DRAFT or CONFIRMED, not yet converted)
+    apiClient.get(`/api/sales/customer-po/?customer=${formData.customer}&page_size=500`)
+      .then(res => {
+        const list = res.data?.results || res.data || [];
+        setAvailablePOs(list.filter(p => p.status !== 'CANCELLED' && p.status !== 'CONVERTED')
+          .map(p => ({ value: p.id, label: `${p.upload_id}${p.po_number ? ` (${p.po_number})` : ''}`, raw: p })));
+      })
+      .catch(() => setAvailablePOs([]));
     setFormData(prev => ({ ...prev, price_list: '' }));
     setPriceLines([]);
+    setSelectedPOIds([]);
   }, [formData.customer]);
 
   // 3. Price List changed → fetch price lines
@@ -148,6 +163,62 @@ export default function CreateSalesOrder() {
         value: p.id,
         label: p.product_name || p.name || p.sku_code || p.id,
       }));
+  };
+
+  // Handle PO selection → auto-fill SO from PO(s)
+  const handlePOSelect = async (poId) => {
+    if (!poId) return;
+    // Add to selected list
+    if (selectedPOIds.includes(poId)) return;
+    try {
+      const res = await apiClient.get(`/api/sales/customer-po/${poId}/`);
+      const po = res.data;
+      const newIds = [...selectedPOIds, poId];
+      setSelectedPOIds(newIds);
+
+      // Auto-fill header from first PO (or merge)
+      if (selectedPOIds.length === 0) {
+        // First PO - auto-fill everything
+        setFormData(prev => ({
+          ...prev,
+          warehouse: po.warehouse || prev.warehouse,
+          price_list: po.price_list || prev.price_list,
+          freight_terms: po.freight_terms || prev.freight_terms,
+          payment_terms: po.payment_terms || prev.payment_terms,
+          currency: po.currency || prev.currency,
+          required_ship_date: po.required_ship_date || prev.required_ship_date,
+          destination: po.destination || prev.destination,
+        }));
+      }
+
+      // Merge PO lines into SO lines
+      const poLines = po.parsed_lines || [];
+      if (poLines.length > 0) {
+        const newSOLines = poLines.map(l => ({
+          product_category: l.product_category || '',
+          product: l.parsed_sku || '',
+          quantity_ordered: l.quantity || '',
+          uom: l.uom || 'KG',
+          unit_price: l.price || '',
+          discount: l.discount || '0',
+          gst: l.gst || '0',
+          delivery_schedule_date: l.delivery_schedule_date || '',
+          remarks: l.line_remarks || '',
+        }));
+        setSoLines(prev => {
+          // Remove empty first line if it exists
+          const existing = prev.filter(l => l.product);
+          return [...existing, ...newSOLines];
+        });
+        toast.success(`${poLines.length} item(s) loaded from ${po.upload_id}`);
+      }
+    } catch {
+      toast.error('Failed to load PO details');
+    }
+  };
+
+  const handleRemovePO = (poId) => {
+    setSelectedPOIds(prev => prev.filter(id => id !== poId));
   };
 
   const findPriceForProduct = (productId) => {
@@ -297,6 +368,7 @@ export default function CreateSalesOrder() {
         freight_terms: formData.freight_terms || '',
         required_ship_date: formData.required_ship_date || undefined,
         destination: formData.destination || '',
+        customer_po_ids: selectedPOIds.length > 0 ? selectedPOIds : undefined,
         remarks: formData.remarks || '',
         so_lines: soLines
           .filter(l => l.product && l.quantity_ordered)
@@ -384,6 +456,43 @@ export default function CreateSalesOrder() {
               </div>
             </div>
           </div>
+
+          {/* Customer PO Selection */}
+          {formData.customer && availablePOs.length > 0 && (
+            <div>
+              <h3 className="text-lg font-semibold text-slate-800 mb-4 pb-2 border-b">Customer PO (auto-fills order details & product lines)</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Select Customer PO</label>
+                  <select onChange={(e) => { if (e.target.value) handlePOSelect(e.target.value); e.target.value = ''; }} className={`${inputClass} border-blue-300`}>
+                    <option value="">-- Add PO to this Sales Order --</option>
+                    {availablePOs.filter(po => !selectedPOIds.includes(po.value)).map(o => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-slate-400 mt-1">You can add multiple POs. Products will be merged into the lines below.</p>
+                </div>
+                <div>
+                  {selectedPOIds.length > 0 && (
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Linked POs ({selectedPOIds.length})</label>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedPOIds.map(poId => {
+                          const po = availablePOs.find(p => p.value === poId);
+                          return (
+                            <span key={poId} className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
+                              {po?.label || poId}
+                              <button type="button" onClick={() => handleRemovePO(poId)} className="text-blue-500 hover:text-red-600 ml-1">&times;</button>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Terms & Currency */}
           <div>

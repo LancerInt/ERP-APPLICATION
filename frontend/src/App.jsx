@@ -90,11 +90,14 @@ import CustomerPO from './pages/sales/customer-po/index.jsx';
 import SalesOrders from './pages/sales/orders/index.jsx';
 import DispatchChallan from './pages/sales/dc/index.jsx';
 import SalesInvoice from './pages/sales/invoices/index.jsx';
+import SalesFlowDashboard from './pages/sales/flow/index.jsx';
 import FreightDetails from './pages/sales/freight-details/index.jsx';
 import SalesFreight from './pages/sales/freight/index.jsx';
 import Receivables from './pages/sales/receivables/index.jsx';
 // Sales - Forms
 import CustomerPONew from './pages/sales/customer-po/new.jsx';
+import CustomerPODetail from './pages/sales/customer-po/[id].jsx';
+import CustomerPOEdit from './pages/sales/customer-po/edit.jsx';
 import SalesOrderNew from './pages/sales/orders/new.jsx';
 import SalesOrderDetail from './pages/sales/orders/[id].jsx';
 import SalesOrderEdit from './pages/sales/orders/edit.jsx';
@@ -296,8 +299,11 @@ function App() {
           <Route path="/purchase/vendor-credits/:id" element={<ProtectedRoute module="Vendor Payment"><VendorCreditDetail /></ProtectedRoute>} />
 
           {/* ========== SALES ========== */}
+          <Route path="/sales/flow" element={<ProtectedRoute module="Sales Order"><SalesFlowDashboard /></ProtectedRoute>} />
           <Route path="/sales/customer-po" element={<ProtectedRoute module="Customer PO"><CustomerPO /></ProtectedRoute>} />
           <Route path="/sales/customer-po/new" element={<ProtectedRoute module="Customer PO" action="create"><CustomerPONew /></ProtectedRoute>} />
+          <Route path="/sales/customer-po/:id" element={<ProtectedRoute module="Customer PO"><CustomerPODetail /></ProtectedRoute>} />
+          <Route path="/sales/customer-po/:id/edit" element={<ProtectedRoute module="Customer PO" action="edit"><CustomerPOEdit /></ProtectedRoute>} />
           <Route path="/sales/orders" element={<ProtectedRoute module="Sales Order"><SalesOrders /></ProtectedRoute>} />
           <Route path="/sales/orders/new" element={<ProtectedRoute module="Sales Order" action="create"><SalesOrderNew /></ProtectedRoute>} />
           <Route path="/sales/orders/:id" element={<ProtectedRoute module="Sales Order"><SalesOrderDetail /></ProtectedRoute>} />
