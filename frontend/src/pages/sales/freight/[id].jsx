@@ -166,13 +166,8 @@ export default function OutwardFreightDetail() {
               <h2 className="text-lg font-semibold text-slate-900 mb-5 pb-2 border-b">Freight Costs</h2>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
                 <div><span className="text-slate-500">Freight Value</span><p className="font-semibold">{fmt(freight.base_amount)}</p></div>
-                <div><span className="text-slate-500">Discount</span><p className="font-semibold text-red-600">-{fmt(freight.discount)}</p></div>
-                <div><span className="text-slate-500">Loading Wages</span><p className="font-semibold">+{fmt(freight.loading_wages_amount)}</p></div>
                 <div><span className="text-slate-500">Unloading Wages</span><p className="font-semibold">+{fmt(freight.unloading_wages_amount)}</p></div>
-                <div><span className="text-slate-500">Additional Freight</span><p className="font-semibold">+{fmt(freight.additional_freight)}</p></div>
                 <div><span className="text-slate-500">Unloading Charges</span><p className="font-semibold">+{fmt(freight.unloading_charges)}</p></div>
-                <div><span className="text-slate-500">Less Amount</span><p className="font-semibold text-red-600">-{fmt(freight.less_amount)}</p></div>
-                <div><span className="text-slate-500">TDS Less</span><p className="font-semibold text-red-600">-{fmt(freight.tds_less)}</p></div>
                 <div><span className="text-slate-500">Freight Per Ton</span><p className="font-semibold">{fmt(freight.freight_per_ton)}</p></div>
               </div>
               <div className="mt-4 pt-3 border-t flex justify-between text-base font-bold">

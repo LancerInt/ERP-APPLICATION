@@ -10,7 +10,7 @@ import useLookup from '../../../hooks/useLookup.js';
 
 const inputClass = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500';
 
-const emptyDCLink = { dc: '', invoice_no: '', destination: '' };
+const emptyDCLink = { dc: '', invoice_no: '', destination: '', products: [] };
 
 export default function CreateOutwardFreight() {
   const navigate = useNavigate();
@@ -29,14 +29,21 @@ export default function CreateOutwardFreight() {
     apiClient.get('/api/sales/dc/', { params: { page_size: 500 } })
       .then(r => setAllDCs((r.data?.results || r.data || []).map(d => ({ value: d.id, label: d.dc_no }))))
       .catch(() => {});
-    // Fetch freight details that are not cancelled
-    apiClient.get('/api/sales/freight-details/', { params: { page_size: 500 } })
-      .then(r => {
-        const list = r.data?.results || r.data || [];
-        setFreightDetailOptions(list.filter(f => f.status !== 'CANCELLED').map(f => ({
+    // Fetch freight details that are not cancelled and not already linked to an outward freight
+    Promise.all([
+      apiClient.get('/api/sales/freight-details/', { params: { page_size: 500 } }),
+      apiClient.get('/api/sales/freight/', { params: { page_size: 500 } }),
+    ]).then(([fdRes, fRes]) => {
+      const fdList = fdRes.data?.results || fdRes.data || [];
+      const freightList = fRes.data?.results || fRes.data || [];
+      // Get all freight_detail IDs already linked to an outward freight
+      const linkedFDIds = new Set(freightList.filter(f => f.freight_detail).map(f => f.freight_detail));
+      setFreightDetailOptions(
+        fdList.filter(f => f.status !== 'CANCELLED' && !linkedFDIds.has(f.id)).map(f => ({
           value: f.id, label: `${f.freight_no} - ${f.customer_name || ''} (${f.lorry_no || ''})`,
-        })));
-      }).catch(() => {});
+        }))
+      );
+    }).catch(() => {});
     // Generate next outward freight number
     const prefix = 'FADV';
     const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -51,7 +58,6 @@ export default function CreateOutwardFreight() {
 
   const [formData, setFormData] = useState({
     freight_detail: '',
-    dispatch_challan: '',
     transporter: '',
     freight_date: new Date().toISOString().split('T')[0],
     invoice_date: '',
@@ -61,14 +67,7 @@ export default function CreateOutwardFreight() {
     shipment_quantity: '',
     quantity_uom: 'MTS',
     base_amount: '',
-    discount: '0',
-    loading_wages_amount: '0',
-    unloading_wages_amount: '0',
     freight_per_ton: '0',
-    additional_freight: '0',
-    unloading_charges: '0',
-    less_amount: '0',
-    tds_less: '0',
     remarks: '',
   });
   const [dcLinks, setDcLinks] = useState([{ ...emptyDCLink }]);
@@ -95,12 +94,23 @@ export default function CreateOutwardFreight() {
         freight_per_ton: fd.freight_per_ton || '0',
         remarks: fd.remarks || '',
       }));
-      // Auto-fill DC links from freight detail
-      const links = (fd.dc_links || []).map(l => ({ dc: l.dc, invoice_no: l.invoice_no || '', destination: l.destination || '' }));
+      // Auto-fill DC links from freight detail and fetch product lines
+      const links = (fd.dc_links || []).map(l => ({ dc: l.dc, invoice_no: l.invoice_no || '', destination: l.destination || '', products: [] }));
       if (links.length > 0) {
         setDcLinks(links);
-        // Set first DC as primary dispatch_challan
-        setFormData(prev => ({ ...prev, dispatch_challan: links[0].dc }));
+        // Fetch product lines for each DC
+        links.forEach(async (link, idx) => {
+          if (!link.dc) return;
+          try {
+            const dcRes = await apiClient.get(`/api/sales/dc/${link.dc}/`);
+            const prods = (dcRes.data?.dc_lines || []).map(l => ({
+              name: l.product_name || l.product_sku || '',
+              qty: l.quantity_dispatched || 0,
+              uom: l.uom || '',
+            }));
+            setDcLinks(prev => prev.map((l, i) => i === idx ? { ...l, products: prods } : l));
+          } catch { /* ignore */ }
+        });
       }
       toast.success('Freight details auto-filled!');
     } catch {
@@ -116,33 +126,39 @@ export default function CreateOutwardFreight() {
 
   // Calculations
   const baseAmt = parseFloat(formData.base_amount) || 0;
-  const discount = parseFloat(formData.discount) || 0;
-  const unloadWages = parseFloat(formData.unloading_wages_amount) || 0;
-  const addFreight = parseFloat(formData.additional_freight) || 0;
-  const unloadCharges = parseFloat(formData.unloading_charges) || 0;
-  const lessAmt = parseFloat(formData.less_amount) || 0;
-  const tdsLess = parseFloat(formData.tds_less) || 0;
-  const payableAmount = baseAmt - discount + unloadWages + addFreight + unloadCharges - lessAmt - tdsLess;
+  const payableAmount = baseAmt;
 
   const fmt = (v) => `₹${Number(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
 
   // DC links
-  const handleDCLinkChange = (idx, field, value) => {
+  const handleDCLinkChange = async (idx, field, value) => {
     setDcLinks(prev => prev.map((l, i) => i === idx ? { ...l, [field]: value } : l));
+    if (field === 'dc' && value) {
+      try {
+        const res = await apiClient.get(`/api/sales/dc/${value}/`);
+        const lines = (res.data?.dc_lines || []).map(l => ({
+          name: l.product_name || l.product_sku || '',
+          qty: l.quantity_dispatched || 0,
+          uom: l.uom || '',
+        }));
+        setDcLinks(prev => prev.map((l, i) => i === idx ? { ...l, products: lines } : l));
+      } catch { /* ignore */ }
+    }
+    if (field === 'dc' && !value) {
+      setDcLinks(prev => prev.map((l, i) => i === idx ? { ...l, products: [] } : l));
+    }
   };
   const addDCLink = () => setDcLinks(prev => [...prev, { ...emptyDCLink }]);
   const removeDCLink = (idx) => { if (dcLinks.length > 1) setDcLinks(prev => prev.filter((_, i) => i !== idx)); };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.dispatch_challan) { toast.error('Please select a primary DC.'); return; }
     if (!formData.base_amount || parseFloat(formData.base_amount) <= 0) { toast.error('Freight Value must be > 0.'); return; }
 
     setIsLoading(true);
     try {
       const payload = {
         freight_detail: formData.freight_detail || null,
-        dispatch_challan: formData.dispatch_challan,
         transporter: formData.transporter || null,
         freight_type: 'LINEHAUL',
         freight_date: formData.freight_date || null,
@@ -153,14 +169,7 @@ export default function CreateOutwardFreight() {
         shipment_quantity: formData.shipment_quantity || null,
         quantity_uom: formData.quantity_uom || '',
         base_amount: formData.base_amount || 0,
-        discount: formData.discount || 0,
-        loading_wages_amount: formData.loading_wages_amount || 0,
-        unloading_wages_amount: formData.unloading_wages_amount || 0,
         freight_per_ton: formData.freight_per_ton || 0,
-        additional_freight: formData.additional_freight || 0,
-        unloading_charges: formData.unloading_charges || 0,
-        less_amount: formData.less_amount || 0,
-        tds_less: formData.tds_less || 0,
         remarks: formData.remarks || '',
         dc_links: dcLinks.filter(l => l.dc).map(l => ({
           dc: l.dc, invoice_no: l.invoice_no || '', destination: l.destination || '',
@@ -208,13 +217,6 @@ export default function CreateOutwardFreight() {
                 <input type="date" name="freight_date" value={formData.freight_date} onChange={handleChange} required className={inputClass} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Primary DC <span className="text-red-500">*</span></label>
-                <select name="dispatch_challan" value={formData.dispatch_challan} onChange={handleChange} required className={inputClass}>
-                  <option value="">Select DC</option>
-                  {allDCs.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              </div>
-              <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Customer Name</label>
                 <input type="text" name="customer_name" value={formData.customer_name} onChange={handleChange} className={inputClass} />
               </div>
@@ -257,6 +259,8 @@ export default function CreateOutwardFreight() {
                 <thead>
                   <tr className="bg-slate-50 border-b">
                     <th className="text-left px-3 py-2 font-medium text-slate-600">DC No</th>
+                    <th className="text-left px-3 py-2 font-medium text-slate-600">Product Name</th>
+                    <th className="text-left px-3 py-2 font-medium text-slate-600">Quantity</th>
                     <th className="text-left px-3 py-2 font-medium text-slate-600">Invoice No</th>
                     <th className="text-left px-3 py-2 font-medium text-slate-600">Destination</th>
                     <th className="px-3 py-2"></th>
@@ -270,6 +274,16 @@ export default function CreateOutwardFreight() {
                           <option value="">Select DC</option>
                           {allDCs.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                         </select>
+                      </td>
+                      <td className="px-3 py-2 text-xs text-slate-700" style={{ minWidth: '160px' }}>
+                        {(link.products || []).length > 0
+                          ? link.products.map((p, pi) => <div key={pi}>{p.name}</div>)
+                          : <span className="text-slate-400">-</span>}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-slate-700" style={{ minWidth: '100px' }}>
+                        {(link.products || []).length > 0
+                          ? link.products.map((p, pi) => <div key={pi}>{p.qty} {p.uom}</div>)
+                          : <span className="text-slate-400">-</span>}
                       </td>
                       <td className="px-3 py-2">
                         <input type="text" value={link.invoice_no} onChange={(e) => handleDCLinkChange(idx, 'invoice_no', e.target.value)} className={inputClass} style={{ minWidth: '120px' }} />
@@ -305,48 +319,6 @@ export default function CreateOutwardFreight() {
                   <input type="number" step="0.01" min="0" name="freight_per_ton" value={formData.freight_per_ton} onChange={handleChange} className={`${inputClass} pl-7`} />
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Discount</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-2.5 text-slate-400 text-sm">₹</span>
-                  <input type="number" step="0.01" min="0" name="discount" value={formData.discount} onChange={handleChange} className={`${inputClass} pl-7`} />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Unloading Wages</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-2.5 text-slate-400 text-sm">₹</span>
-                  <input type="number" step="0.01" min="0" name="unloading_wages_amount" value={formData.unloading_wages_amount} onChange={handleChange} className={`${inputClass} pl-7`} />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Additional Freight</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-2.5 text-slate-400 text-sm">₹</span>
-                  <input type="number" step="0.01" min="0" name="additional_freight" value={formData.additional_freight} onChange={handleChange} className={`${inputClass} pl-7`} />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Unloading Charges</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-2.5 text-slate-400 text-sm">₹</span>
-                  <input type="number" step="0.01" min="0" name="unloading_charges" value={formData.unloading_charges} onChange={handleChange} className={`${inputClass} pl-7`} />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Less Amount</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-2.5 text-slate-400 text-sm">₹</span>
-                  <input type="number" step="0.01" min="0" name="less_amount" value={formData.less_amount} onChange={handleChange} className={`${inputClass} pl-7`} />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">TDS Less</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-2.5 text-slate-400 text-sm">₹</span>
-                  <input type="number" step="0.01" min="0" name="tds_less" value={formData.tds_less} onChange={handleChange} className={`${inputClass} pl-7`} />
-                </div>
-              </div>
             </div>
             {/* Payable Summary */}
             <div className="mt-4 p-4 bg-slate-50 rounded-lg border">
@@ -355,7 +327,7 @@ export default function CreateOutwardFreight() {
                 <span className="text-xl font-bold text-slate-900">{fmt(payableAmount)}</span>
               </div>
               <div className="text-xs text-slate-500 mt-1">
-                Base ({fmt(baseAmt)}) - Discount ({fmt(discount)}) + Unloading ({fmt(unloadWages)}) + Additional ({fmt(addFreight)}) + Unloading Charges ({fmt(unloadCharges)}) - Less ({fmt(lessAmt)}) - TDS ({fmt(tdsLess)})
+                Base ({fmt(baseAmt)})
               </div>
             </div>
           </div>

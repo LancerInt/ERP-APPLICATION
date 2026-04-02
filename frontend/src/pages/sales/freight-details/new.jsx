@@ -50,6 +50,7 @@ export default function CreateFreightDetail() {
     company: '', factory: '', customer: '', transporter: '',
     freight_type: '', lorry_no: '', total_quantity: '', quantity_uom: 'MTS',
     freight_per_ton: '0', total_freight: '0', freight_paid: '0',
+    discount: '0', additional_freight: '0', less_amount: '0', tds_less: '0',
     destination: '', destination_state: '', decision_box: false, remarks: '', status: 'PENDING',
   });
   const [dcLinks, setDcLinks] = useState([{ ...emptyDCLink }]);
@@ -81,9 +82,14 @@ export default function CreateFreightDetail() {
   // Auto-calculate total quantity from DC lines
   const totalQuantity = dcLinks.reduce((s, l) => s + (parseFloat(l.quantity) || 0), 0);
 
-  // Auto-calculate total freight = freight per ton × total quantity
+  // Auto-calculate total freight = (freight per ton × total quantity) - discount + additional - less - tds
   const freightPerTon = parseFloat(formData.freight_per_ton) || 0;
-  const totalFreight = freightPerTon * totalQuantity;
+  const baseFreight = freightPerTon * totalQuantity;
+  const discountAmt = parseFloat(formData.discount) || 0;
+  const additionalFreight = parseFloat(formData.additional_freight) || 0;
+  const lessAmount = parseFloat(formData.less_amount) || 0;
+  const tdsLess = parseFloat(formData.tds_less) || 0;
+  const totalFreight = baseFreight - discountAmt + additionalFreight - lessAmount - tdsLess;
   const freightPaid = 0; // Always 0 for new freight, payments happen in Outward Freight
   const balance = Math.max(0, totalFreight - freightPaid);
   const fmt = (v) => `₹${Number(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
@@ -184,25 +190,6 @@ export default function CreateFreightDetail() {
                   <option value="">Select</option><option value="FULL_LOAD">Full Load</option><option value="PART_LOAD">Part Load</option>
                   <option value="LOCAL">Local</option><option value="EXPRESS">Express</option>
                 </select></div>
-              <div><label className="block text-sm font-medium text-slate-700 mb-1">Total Quantity</label>
-                <input type="text" readOnly value={totalQuantity > 0 ? totalQuantity.toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '0'} className={`${inputClass} bg-slate-50 font-semibold text-slate-700`} />
-                <p className="text-xs text-slate-400 mt-0.5">Auto-calculated from DC lines</p></div>
-              <div><label className="block text-sm font-medium text-slate-700 mb-1">Freight Per Ton (₹)</label>
-                <input type="number" step="0.01" name="freight_per_ton" value={formData.freight_per_ton} onChange={handleChange} className={inputClass} /></div>
-              <div><label className="block text-sm font-medium text-slate-700 mb-1">Total Freight (₹)</label>
-                <input type="text" readOnly value={fmt(totalFreight)} className={`${inputClass} bg-slate-50 font-semibold text-slate-700`} />
-                <p className="text-xs text-slate-400 mt-0.5">Per Ton × Quantity</p></div>
-              <div><label className="block text-sm font-medium text-slate-700 mb-1">Freight Paid (₹)</label>
-                <input type="text" readOnly value={fmt(freightPaid)} className={`${inputClass} bg-slate-50 text-slate-500`} />
-                <p className="text-xs text-slate-400 mt-0.5">Updated from Outward Freight</p></div>
-              <div><label className="block text-sm font-medium text-slate-700 mb-1">Balance Freight</label>
-                <input type="text" readOnly value={fmt(balance)} className={`${inputClass} bg-slate-50 font-semibold ${balance > 0 ? 'text-orange-600' : 'text-green-600'}`} /></div>
-              <div><label className="block text-sm font-medium text-slate-700 mb-1">Destination</label>
-                <input type="text" name="destination" value={formData.destination} onChange={handleChange} className={inputClass} /></div>
-              <div><label className="block text-sm font-medium text-slate-700 mb-1">Destination (State)</label>
-                <input type="text" name="destination_state" value={formData.destination_state} onChange={handleChange} className={inputClass} /></div>
-              <div><label className="block text-sm font-medium text-slate-700 mb-1">Freight Status</label>
-                <input type="text" readOnly value="Pending" className={`${inputClass} bg-slate-50 text-slate-600`} /></div>
             </div>
           </div>
 
@@ -251,6 +238,40 @@ export default function CreateFreightDetail() {
                 </tr></tfoot>
               )}
             </table>
+          </div>
+
+          {/* Freight Calculation */}
+          <div>
+            <h3 className="text-lg font-semibold text-slate-800 mb-4 pb-2 border-b">Freight Calculation</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div><label className="block text-sm font-medium text-slate-700 mb-1">Total Quantity</label>
+                <input type="text" readOnly value={totalQuantity > 0 ? totalQuantity.toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '0'} className={`${inputClass} bg-slate-50 font-semibold text-slate-700`} />
+                <p className="text-xs text-slate-400 mt-0.5">Auto-calculated from DC lines</p></div>
+              <div><label className="block text-sm font-medium text-slate-700 mb-1">Freight Per Ton (₹)</label>
+                <input type="number" step="0.01" name="freight_per_ton" value={formData.freight_per_ton} onChange={handleChange} className={inputClass} /></div>
+              <div><label className="block text-sm font-medium text-slate-700 mb-1">Discount (₹)</label>
+                <input type="number" step="0.01" min="0" name="discount" value={formData.discount} onChange={handleChange} className={inputClass} /></div>
+              <div><label className="block text-sm font-medium text-slate-700 mb-1">Additional Freight (₹)</label>
+                <input type="number" step="0.01" min="0" name="additional_freight" value={formData.additional_freight} onChange={handleChange} className={inputClass} /></div>
+              <div><label className="block text-sm font-medium text-slate-700 mb-1">Less Amount (₹)</label>
+                <input type="number" step="0.01" min="0" name="less_amount" value={formData.less_amount} onChange={handleChange} className={inputClass} /></div>
+              <div><label className="block text-sm font-medium text-slate-700 mb-1">TDS Less (₹)</label>
+                <input type="number" step="0.01" min="0" name="tds_less" value={formData.tds_less} onChange={handleChange} className={inputClass} /></div>
+              <div><label className="block text-sm font-medium text-slate-700 mb-1">Total Freight (₹)</label>
+                <input type="text" readOnly value={fmt(totalFreight)} className={`${inputClass} bg-slate-50 font-semibold text-slate-700`} />
+                <p className="text-xs text-slate-400 mt-0.5">(Per Ton × Qty) - Discount + Additional - Less - TDS</p></div>
+              <div><label className="block text-sm font-medium text-slate-700 mb-1">Freight Paid (₹)</label>
+                <input type="text" readOnly value={fmt(freightPaid)} className={`${inputClass} bg-slate-50 text-slate-500`} />
+                <p className="text-xs text-slate-400 mt-0.5">Updated from Outward Freight</p></div>
+              <div><label className="block text-sm font-medium text-slate-700 mb-1">Balance Freight</label>
+                <input type="text" readOnly value={fmt(balance)} className={`${inputClass} bg-slate-50 font-semibold ${balance > 0 ? 'text-orange-600' : 'text-green-600'}`} /></div>
+              <div><label className="block text-sm font-medium text-slate-700 mb-1">Destination</label>
+                <input type="text" name="destination" value={formData.destination} onChange={handleChange} className={inputClass} /></div>
+              <div><label className="block text-sm font-medium text-slate-700 mb-1">Destination (State)</label>
+                <input type="text" name="destination_state" value={formData.destination_state} onChange={handleChange} className={inputClass} /></div>
+              <div><label className="block text-sm font-medium text-slate-700 mb-1">Freight Status</label>
+                <input type="text" readOnly value="Pending" className={`${inputClass} bg-slate-50 text-slate-600`} /></div>
+            </div>
           </div>
 
           {/* Decision & Remarks */}

@@ -39,17 +39,53 @@ const STEP_CONFIG = [
 export default function SalesFlowDashboard() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [searchTerm, setSearchTerm] = useState(searchParams.get('so_no') || '');
-  const [soOptions, setSoOptions] = useState([]);
+  const [searchType, setSearchType] = useState('so'); // 'so' | 'cpo' | 'dc'
+  const [allRecords, setAllRecords] = useState([]);
   const [flowData, setFlowData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedNode, setSelectedNode] = useState(null);
+  const [expandedItem, setExpandedItem] = useState(null);
+  const [itemDetail, setItemDetail] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
-  // Load SO options
+  const fmtQty = (v) => Number(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+
+  const loadItemDetail = async (item) => {
+    if (expandedItem === item.id) { setExpandedItem(null); setItemDetail(null); return; }
+    setExpandedItem(item.id);
+    setDetailLoading(true);
+    try { const res = await apiClient.get(item.apiUrl); setItemDetail(res.data); }
+    catch { setItemDetail(null); }
+    finally { setDetailLoading(false); }
+  };
+
+  // Load all searchable records (CPO, SO, DC)
   useEffect(() => {
-    apiClient.get('/api/sales/orders/', { params: { page_size: 500 } })
-      .then(r => setSoOptions((r.data?.results || r.data || []).map(s => ({ id: s.id, so_no: s.so_no, customer: s.customer_name }))))
-      .catch(() => {});
+    Promise.all([
+      apiClient.get('/api/sales/customer-po/', { params: { page_size: 500 } }),
+      apiClient.get('/api/sales/orders/', { params: { page_size: 500 } }),
+      apiClient.get('/api/sales/dc/', { params: { page_size: 500 } }),
+    ]).then(([cpoRes, soRes, dcRes]) => {
+      const records = [];
+      // SOs
+      (soRes.data?.results || soRes.data || []).forEach(s => {
+        records.push({ id: s.id, refNo: s.so_no, type: 'so', label: `${s.so_no} - ${s.customer_name || ''}`, soId: s.id, icon: '📦' });
+      });
+      // CPOs — only if linked to SO
+      (cpoRes.data?.results || cpoRes.data || []).forEach(p => {
+        const soId = p.linked_sos?.[0]?.id || p.linked_sales_order;
+        if (soId) {
+          records.push({ id: p.id, refNo: p.upload_id, type: 'cpo', label: `${p.upload_id} - ${p.customer_name || ''} (Customer PO)`, soId, icon: '📄' });
+        }
+      });
+      // DCs — only if linked to SO
+      (dcRes.data?.results || dcRes.data || []).forEach(d => {
+        if (d.linked_so_id) {
+          records.push({ id: d.id, refNo: d.dc_no, type: 'dc', label: `${d.dc_no} - ${d.warehouse_name || ''} (DC)`, soId: d.linked_so_id, icon: '🚚' });
+        }
+      });
+      setAllRecords(records);
+    }).catch(() => {});
   }, []);
 
   // Load flow when SO selected
@@ -58,6 +94,8 @@ export default function SalesFlowDashboard() {
     setIsLoading(true);
     setFlowData(null);
     setSelectedNode(null);
+    setExpandedItem(null);
+    setItemDetail(null);
     try {
       const soRes = await apiClient.get(`/api/sales/orders/${soId}/`);
       const so = soRes.data;
@@ -75,7 +113,10 @@ export default function SalesFlowDashboard() {
     finally { setIsLoading(false); }
   };
 
-  const handleSOSelect = (soId) => {
+  const handleRecordSelect = (value) => {
+    if (!value) return;
+    const record = allRecords.find(r => r.id === value);
+    const soId = record?.soId || value;
     if (soId) { setSearchParams({ so_id: soId }); loadFlow(soId); }
   };
 
@@ -91,9 +132,9 @@ export default function SalesFlowDashboard() {
 
   // Build steps with completion status
   const steps = [
-    { ...STEP_CONFIG[0], done: cpos.length > 0, count: cpos.length, items: cpos.map(c => ({ id: c.upload_id, label: c.upload_id, status: 'CONFIRMED' })) },
-    { ...STEP_CONFIG[1], done: !!so, count: 1, items: so ? [{ id: so.id, label: so.so_no, status: so.approval_status }] : [] },
-    { ...STEP_CONFIG[2], done: dcs.length > 0, count: dcs.length, items: dcs.map(d => ({ id: d.id, label: d.dc_no, status: d.status, date: d.dispatch_date })) },
+    { ...STEP_CONFIG[0], done: cpos.length > 0, count: cpos.length, items: cpos.map(c => ({ id: c.upload_id, label: c.upload_id, status: 'CONFIRMED', type: 'cpo', apiUrl: `/api/sales/customer-po/?upload_id=${c.upload_id}` })) },
+    { ...STEP_CONFIG[1], done: !!so, count: 1, items: so ? [{ id: so.id, label: so.so_no, status: so.approval_status, type: 'so', apiUrl: `/api/sales/orders/${so.id}/` }] : [] },
+    { ...STEP_CONFIG[2], done: dcs.length > 0, count: dcs.length, items: dcs.map(d => ({ id: d.id, label: d.dc_no, status: d.status, date: d.dispatch_date, type: 'dc', apiUrl: `/api/sales/dc/${d.id}/` })) },
     { ...STEP_CONFIG[3], done: false, count: 0, items: [] },
     { ...STEP_CONFIG[4], done: false, count: 0, items: [] },
     { ...STEP_CONFIG[5], done: false, count: 0, items: [] },
@@ -108,15 +149,37 @@ export default function SalesFlowDashboard() {
         </div>
 
         {/* Search */}
-        <div className="bg-white rounded-lg border border-slate-200 p-4">
-          <div className="flex gap-3">
-            <div className="flex-1 relative">
-              <Search size={18} className="absolute left-3 top-2.5 text-slate-400" />
-              <select onChange={(e) => handleSOSelect(e.target.value)} className="w-full border border-slate-300 rounded-lg pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-primary-500">
-                <option value="">Select a Sales Order to view flow...</option>
-                {soOptions.map(s => <option key={s.id} value={s.id}>{s.so_no} - {s.customer}</option>)}
-              </select>
-            </div>
+        <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-3">
+          {/* Radio buttons */}
+          <div className="flex items-center gap-6">
+            <span className="text-sm font-medium text-slate-600">Search by:</span>
+            {[
+              { value: 'so', label: 'Sales Order', icon: '📦' },
+              { value: 'cpo', label: 'Customer PO', icon: '📄' },
+              { value: 'dc', label: 'Dispatch Challan', icon: '🚚' },
+            ].map(opt => (
+              <label key={opt.value} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border cursor-pointer transition text-sm ${
+                searchType === opt.value ? 'bg-blue-50 border-blue-400 text-blue-700 font-medium' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}>
+                <input type="radio" name="searchType" value={opt.value} checked={searchType === opt.value}
+                  onChange={(e) => setSearchType(e.target.value)} className="sr-only" />
+                <span>{opt.icon}</span>
+                <span>{opt.label}</span>
+                <span className="text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">{allRecords.filter(r => r.type === opt.value).length}</span>
+              </label>
+            ))}
+          </div>
+          {/* Dropdown — filtered by selected radio */}
+          <div className="relative">
+            <Search size={18} className="absolute left-3 top-2.5 text-slate-400" />
+            <select onChange={(e) => handleRecordSelect(e.target.value)} className="w-full border border-slate-300 rounded-lg pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-primary-500">
+              <option value="">
+                {searchType === 'so' ? 'Select Sales Order...' : searchType === 'cpo' ? 'Select Customer PO...' : 'Select Dispatch Challan...'}
+              </option>
+              {allRecords.filter(r => r.type === searchType).map(r => (
+                <option key={r.id} value={r.id}>{r.label}</option>
+              ))}
+            </select>
           </div>
         </div>
 
@@ -236,20 +299,117 @@ export default function SalesFlowDashboard() {
                 <button onClick={() => setSelectedNode(null)} className="p-1 rounded-lg hover:bg-white/20"><X size={20} /></button>
               </div>
             </div>
-            <div className="p-5 space-y-3">
+            <div className="p-4 space-y-3">
               {selectedNode.items.map((item, i) => (
-                <div key={i} className="border border-slate-200 rounded-lg p-4 hover:bg-slate-50 transition">
-                  <div className="flex items-center justify-between">
+                <div key={i} className="border border-slate-200 rounded-lg overflow-hidden">
+                  {/* Item header - click to expand */}
+                  <button onClick={() => loadItemDetail(item)}
+                    className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition text-left">
                     <div>
                       <p className="font-semibold text-slate-800">{item.label}</p>
                       {item.date && <p className="text-xs text-slate-400 mt-0.5">{fmtDate(item.date)}</p>}
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge status={item.status} />
-                      <button onClick={() => { navigate(`${selectedNode.path}/${item.id}`); setSelectedNode(null); }}
-                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded" title="View Details"><Eye size={16} /></button>
+                      <button onClick={(e) => { e.stopPropagation(); navigate(`${selectedNode.path}/${item.id}`); setSelectedNode(null); }}
+                        className="p-1.5 text-blue-600 hover:bg-blue-100 rounded" title="Go to page"><Eye size={14} /></button>
                     </div>
-                  </div>
+                  </button>
+
+                  {/* Expanded detail */}
+                  {expandedItem === item.id && (
+                    <div className="border-t bg-slate-50 p-4">
+                      {detailLoading ? (
+                        <p className="text-center text-slate-400 py-3 text-xs">Loading details...</p>
+                      ) : itemDetail ? (
+                        <div className="space-y-2 text-xs">
+                          {/* SO Detail */}
+                          {item.type === 'so' && (
+                            <>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div><span className="text-slate-500">Company:</span> <span className="font-medium">{itemDetail.company_name}</span></div>
+                                <div><span className="text-slate-500">Customer:</span> <span className="font-medium">{itemDetail.customer_name}</span></div>
+                                <div><span className="text-slate-500">Warehouse:</span> <span className="font-medium">{itemDetail.warehouse_name}</span></div>
+                                <div><span className="text-slate-500">Date:</span> <span className="font-medium">{fmtDate(itemDetail.so_date)}</span></div>
+                                <div><span className="text-slate-500">Destination:</span> <span className="font-medium">{itemDetail.destination || '-'}</span></div>
+                                <div><span className="text-slate-500">Total:</span> <span className="font-bold">{fmt(itemDetail.total_amount)}</span></div>
+                              </div>
+                              {itemDetail.so_lines?.length > 0 && (
+                                <div className="mt-2">
+                                  <p className="font-semibold text-slate-600 mb-1">Product Lines ({itemDetail.so_lines.length})</p>
+                                  <table className="w-full text-xs border-collapse">
+                                    <thead><tr className="bg-white"><th className="px-2 py-1 text-left border-b">Product</th><th className="px-2 py-1 text-right border-b">Qty</th><th className="px-2 py-1 border-b">UOM</th><th className="px-2 py-1 text-right border-b">Price</th><th className="px-2 py-1 text-right border-b">Total</th><th className="px-2 py-1 text-right border-b text-orange-600">Pending</th></tr></thead>
+                                    <tbody>{itemDetail.so_lines.map((l, j) => (
+                                      <tr key={j} className="border-b border-slate-100"><td className="px-2 py-1 font-medium">{l.product_name}</td><td className="px-2 py-1 text-right">{fmtQty(l.quantity_ordered)}</td><td className="px-2 py-1">{l.uom}</td><td className="px-2 py-1 text-right">{fmt(l.unit_price)}</td><td className="px-2 py-1 text-right font-medium">{fmt(l.line_total)}</td><td className="px-2 py-1 text-right text-orange-600">{fmtQty(l.pending_qty)}</td></tr>
+                                    ))}</tbody>
+                                  </table>
+                                </div>
+                              )}
+                            </>
+                          )}
+
+                          {/* DC Detail */}
+                          {item.type === 'dc' && (
+                            <>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div><span className="text-slate-500">Warehouse:</span> <span className="font-medium">{itemDetail.warehouse_name}</span></div>
+                                <div><span className="text-slate-500">Date:</span> <span className="font-medium">{fmtDate(itemDetail.dispatch_date)}</span></div>
+                                <div><span className="text-slate-500">Invoice:</span> <span className="font-medium">{itemDetail.invoice_no || '-'}</span></div>
+                                <div><span className="text-slate-500">Lorry:</span> <span className="font-medium">{itemDetail.lorry_no || '-'}</span></div>
+                                <div><span className="text-slate-500">Linked SO:</span> <span className="font-medium">{itemDetail.linked_so_no || '-'}</span></div>
+                                <div><span className="text-slate-500">Total Qty:</span> <span className="font-bold">{fmtQty(itemDetail.total_dispatch_qty)}</span></div>
+                              </div>
+                              {itemDetail.dc_lines?.length > 0 && (
+                                <div className="mt-2">
+                                  <p className="font-semibold text-slate-600 mb-1">Dispatch Items ({itemDetail.dc_lines.length})</p>
+                                  <table className="w-full text-xs border-collapse">
+                                    <thead><tr className="bg-white"><th className="px-2 py-1 text-left border-b">Product</th><th className="px-2 py-1 text-right border-b">Dispatched</th><th className="px-2 py-1 border-b">UOM</th><th className="px-2 py-1 text-right border-b text-orange-600">Pending</th></tr></thead>
+                                    <tbody>{itemDetail.dc_lines.map((l, j) => (
+                                      <tr key={j} className="border-b border-slate-100"><td className="px-2 py-1 font-medium">{l.product_name}</td><td className="px-2 py-1 text-right">{fmtQty(l.quantity_dispatched)}</td><td className="px-2 py-1">{l.uom}</td><td className="px-2 py-1 text-right text-orange-600">{fmtQty(l.pending_qty)}</td></tr>
+                                    ))}</tbody>
+                                  </table>
+                                </div>
+                              )}
+                            </>
+                          )}
+
+                          {/* CPO Detail - generic */}
+                          {item.type === 'cpo' && itemDetail.results && itemDetail.results[0] && (() => {
+                            const d = itemDetail.results[0];
+                            return (
+                              <>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div><span className="text-slate-500">PO No:</span> <span className="font-medium">{d.upload_id}</span></div>
+                                  <div><span className="text-slate-500">Customer:</span> <span className="font-medium">{d.customer_name}</span></div>
+                                  <div><span className="text-slate-500">Company:</span> <span className="font-medium">{d.company_name}</span></div>
+                                  <div><span className="text-slate-500">Date:</span> <span className="font-medium">{fmtDate(d.po_date)}</span></div>
+                                </div>
+                                {d.parsed_lines?.length > 0 && (
+                                  <div className="mt-2">
+                                    <p className="font-semibold text-slate-600 mb-1">PO Lines ({d.parsed_lines.length})</p>
+                                    <table className="w-full text-xs border-collapse">
+                                      <thead><tr className="bg-white"><th className="px-2 py-1 text-left border-b">Product</th><th className="px-2 py-1 text-right border-b">Qty</th><th className="px-2 py-1 border-b">UOM</th><th className="px-2 py-1 text-right border-b">Rate</th><th className="px-2 py-1 text-right border-b">Total</th></tr></thead>
+                                      <tbody>{d.parsed_lines.map((l, j) => (
+                                        <tr key={j} className="border-b border-slate-100"><td className="px-2 py-1 font-medium">{l.product_name || l.product_description}</td><td className="px-2 py-1 text-right">{fmtQty(l.quantity)}</td><td className="px-2 py-1">{l.uom}</td><td className="px-2 py-1 text-right">{fmt(l.price)}</td><td className="px-2 py-1 text-right font-medium">{fmt(l.line_total)}</td></tr>
+                                      ))}</tbody>
+                                    </table>
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
+
+                          {/* Navigate button */}
+                          <button onClick={() => { navigate(`${selectedNode.path}/${item.id}`); setSelectedNode(null); }}
+                            className="w-full mt-2 flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700">
+                            <Eye size={12} /> View Full Details
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-center text-slate-400 py-3 text-xs">Could not load details</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

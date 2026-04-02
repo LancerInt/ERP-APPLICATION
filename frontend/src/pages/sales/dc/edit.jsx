@@ -40,7 +40,7 @@ export default function EditDispatchChallan() {
 
   const [formData, setFormData] = useState({
     dc_no: '', warehouse: '', transporter: '', invoice_no: '', invoice_date: '',
-    lorry_no: '', driver_contact: '', freight_rate_type: '', freight_rate_value: '',
+    lorry_no: '', driver_contact: '',
   });
   const [dcLines, setDcLines] = useState([{ ...emptyDCLine }]);
   const [linkedSONo, setLinkedSONo] = useState('');
@@ -59,8 +59,6 @@ export default function EditDispatchChallan() {
           invoice_date: d.invoice_date || '',
           lorry_no: d.lorry_no || '',
           driver_contact: d.driver_contact || '',
-          freight_rate_type: d.freight_rate_type || '',
-          freight_rate_value: d.freight_rate_value || '',
         });
         setLinkedSONo(d.linked_so_no || '');
 
@@ -179,8 +177,6 @@ export default function EditDispatchChallan() {
         invoice_date: formData.invoice_date || null,
         lorry_no: formData.lorry_no || '',
         driver_contact: formData.driver_contact || '',
-        freight_rate_type: formData.freight_rate_type || '',
-        freight_rate_value: formData.freight_rate_value || null,
         dc_lines: validLines.map(l => ({
           product: l.product,
           quantity_dispatched: l.quantity_dispatched,
@@ -281,24 +277,6 @@ export default function EditDispatchChallan() {
           </div>
 
           {/* Freight */}
-          <div>
-            <h3 className="text-lg font-semibold text-slate-800 mb-4 pb-2 border-b">Freight Details</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Freight Rate Type</label>
-                <select name="freight_rate_type" value={formData.freight_rate_type} onChange={handleChange} className={inputClass}>
-                  <option value="">Select Type</option>
-                  <option value="PER_KM">Per Kilometer</option>
-                  <option value="FLAT">Flat Rate</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Freight Rate Value</label>
-                <input type="number" step="0.01" min="0" name="freight_rate_value" value={formData.freight_rate_value} onChange={handleChange} className={inputClass} placeholder="0.00" />
-              </div>
-            </div>
-          </div>
-
           {/* Dispatch Items */}
           <div>
             <div className="flex items-center justify-between mb-4 pb-2 border-b">

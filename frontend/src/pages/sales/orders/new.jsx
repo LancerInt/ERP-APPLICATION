@@ -62,9 +62,7 @@ export default function CreateSalesOrder() {
     freight_terms: 'TO_PAY',
     payment_terms: 'NET_15',
     currency: 'INR',
-    customer_po_reference: '',
     required_ship_date: '',
-    credit_terms: 'NET_15',
     destination: '',
     remarks: '',
   });
@@ -125,8 +123,12 @@ export default function CreateSalesOrder() {
     apiClient.get(`/api/sales/customer-po/?customer=${formData.customer}&page_size=500`)
       .then(res => {
         const list = res.data?.results || res.data || [];
-        setAvailablePOs(list.filter(p => p.status !== 'CANCELLED' && p.status !== 'CONVERTED')
-          .map(p => ({ value: p.id, label: `${p.upload_id}${p.po_number ? ` (${p.po_number})` : ''}`, raw: p })));
+        setAvailablePOs(list.filter(p =>
+          p.status !== 'CANCELLED' &&
+          p.status !== 'CONVERTED' &&
+          (!p.linked_sos || p.linked_sos.length === 0) &&
+          !p.linked_so_number
+        ).map(p => ({ value: p.id, label: `${p.upload_id}${p.po_number ? ` (${p.po_number})` : ''}`, raw: p })));
       })
       .catch(() => setAvailablePOs([]));
     setFormData(prev => ({ ...prev, price_list: '' }));
@@ -364,7 +366,6 @@ export default function CreateSalesOrder() {
         company: formData.company,
         warehouse: formData.warehouse,
         price_list: formData.price_list || undefined,
-        credit_terms: formData.credit_terms || '',
         freight_terms: formData.freight_terms || '',
         required_ship_date: formData.required_ship_date || undefined,
         destination: formData.destination || '',
@@ -534,23 +535,9 @@ export default function CreateSalesOrder() {
             <h3 className="text-lg font-semibold text-slate-800 mb-4 pb-2 border-b">Customer & Shipping</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Customer PO Reference</label>
-                <input type="text" name="customer_po_reference" value={formData.customer_po_reference} onChange={handleChange} className={inputClass} />
-              </div>
-              <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Required Ship Date</label>
                 <input type="date" name="required_ship_date" value={formData.required_ship_date} onChange={handleChange} min={new Date().toISOString().split('T')[0]} className={errors.required_ship_date ? errorInputClass : inputClass} />
                 <FieldError msg={errors.required_ship_date} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Credit Terms</label>
-                <select name="credit_terms" value={formData.credit_terms} onChange={handleChange} className={inputClass}>
-                  <option value="">Select Credit Terms</option>
-                  <option value="NET_15">Net 15</option>
-                  <option value="NET_30">Net 30</option>
-                  <option value="NET_45">Net 45</option>
-                  <option value="CUSTOM">Custom</option>
-                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Destination</label>

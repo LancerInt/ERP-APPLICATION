@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
 from django.http import HttpResponse
 from rbac.permissions import HasModulePermission
-from django.db.models import Q
+from django.db.models import Q, Sum
 from django.shortcuts import get_object_or_404
 
 from .models import (
@@ -16,6 +16,7 @@ from .models import (
     SalesInvoiceCheck,
     SalesFreightDetail,
     FreightAdviceOutbound,
+    FreightPayment,
     ReceivableLedger,
 )
 from .serializers import (
@@ -27,7 +28,9 @@ from .serializers import (
     DispatchChallanListSerializer,
     DispatchChallanDetailSerializer,
     CreateUpdateDCSerializer,
-    SalesInvoiceCheckSerializer,
+    SalesInvoiceListSerializer,
+    SalesInvoiceDetailSerializer,
+    CreateUpdateSalesInvoiceSerializer,
     SalesFreightDetailListSerializer,
     SalesFreightDetailDetailSerializer,
     CreateUpdateFreightDetailSerializer,
@@ -35,9 +38,11 @@ from .serializers import (
     FreightAdviceOutboundDetailSerializer,
     CreateUpdateFreightSerializer,
     FreightPaymentSerializer,
+    FreightPaymentListSerializer,
     FreightAttachmentSerializer,
     ReceivableLedgerListSerializer,
     ReceivableLedgerDetailSerializer,
+    CreateUpdateReceivableSerializer,
 )
 from .services import (
     POUploadService,
@@ -187,24 +192,51 @@ class SalesOrderViewSet(viewsets.ModelViewSet):
         return SalesOrderListSerializer
 
     def perform_destroy(self, instance):
-        """Delete SO and rollback: delete linked DCs (which rollback their own reserved_qty),
-        unlink Customer POs back to CONFIRMED status."""
+        """Delete SO and cascade the full chain:
+        SO → DCs → Freight Details → Outward Freights → Payments, Invoices → Receivables.
+        Also rollback reserved_qty and reset Customer POs."""
         from django.db import transaction as db_transaction
         from .models import DCLine
 
         with db_transaction.atomic():
-            # 1. Delete all DCs linked to this SO (cascading rollback via DC's perform_destroy logic)
+            # 1. Find all DCs linked to this SO
             dc_ids = DCLine.objects.filter(
                 linked_so_line__so=instance
             ).values_list('dc_id', flat=True).distinct()
 
             for dc in DispatchChallan.objects.filter(id__in=dc_ids, is_active=True):
+                # Cascade: Receivables ← Invoices ← DC
+                for inv in dc.invoice_checks.filter(is_active=True):
+                    for recv in inv.receivables.filter(is_active=True):
+                        recv.is_active = False
+                        recv.save(update_fields=['is_active', 'updated_at'])
+                    inv.is_active = False
+                    inv.save(update_fields=['is_active', 'updated_at'])
+
+                # Cascade: Freight Details linked to this DC
+                fd_ids = dc.freight_detail_links.values_list('freight_detail_id', flat=True).distinct()
+                for fd in SalesFreightDetail.objects.filter(id__in=fd_ids, is_active=True):
+                    for of in fd.outward_freights.filter(is_active=True):
+                        of.payments.all().delete()
+                        of.is_active = False
+                        of.save(update_fields=['is_active', 'updated_at'])
+                    fd.is_active = False
+                    fd.save(update_fields=['is_active', 'updated_at'])
+                dc.freight_detail_links.all().delete()
+
+                # Cascade: Outward Freights directly linked to this DC
+                for of in dc.freight_advices.filter(is_active=True):
+                    of.payments.all().delete()
+                    of.is_active = False
+                    of.save(update_fields=['is_active', 'updated_at'])
+
                 # Reverse reserved_qty for each DC line
                 for dc_line in dc.dc_lines.select_related('linked_so_line').all():
                     if dc_line.linked_so_line:
                         so_line = dc_line.linked_so_line
                         so_line.reserved_qty = max(Decimal('0'), so_line.reserved_qty - dc_line.quantity_dispatched)
                         so_line.save(update_fields=['reserved_qty', 'updated_at'])
+
                 dc.is_active = False
                 dc.save(update_fields=['is_active', 'updated_at'])
 
@@ -670,6 +702,7 @@ body {{ font-family: "Segoe UI", Arial, sans-serif; font-size: 9px; color: #1a1a
             'warehouse': str(so.warehouse.id) if so.warehouse else '',
             'warehouse_name': so.warehouse.name if so.warehouse else '',
             'destination': so.destination or '',
+            'freight_terms': so.freight_terms or '',
             'lines': result,
         })
 
@@ -745,12 +778,42 @@ class DispatchChallanViewSet(viewsets.ModelViewSet):
         return DispatchChallanListSerializer
 
     def perform_destroy(self, instance):
-        """Delete DC and rollback SO: reverse reserved_qty and update SO status."""
+        """Delete DC and cascade: reverse SO qty, delete downstream Freight Details,
+        Outward Freights, Payments, Invoices, and Receivables."""
         from django.db import transaction as db_transaction
 
         with db_transaction.atomic():
+            # 1. Cascade delete Receivables linked via Invoices referencing this DC
+            for inv in instance.invoice_checks.filter(is_active=True):
+                for recv in inv.receivables.filter(is_active=True):
+                    recv.is_active = False
+                    recv.save(update_fields=['is_active', 'updated_at'])
+                inv.is_active = False
+                inv.save(update_fields=['is_active', 'updated_at'])
+
+            # 2. Cascade delete Freight Details that link to this DC
+            fd_ids = instance.freight_detail_links.values_list('freight_detail_id', flat=True).distinct()
+            for fd in SalesFreightDetail.objects.filter(id__in=fd_ids, is_active=True):
+                # Delete Outward Freights linked to this Freight Detail
+                for of in fd.outward_freights.filter(is_active=True):
+                    of.payments.all().delete()
+                    of.is_active = False
+                    of.save(update_fields=['is_active', 'updated_at'])
+                fd.is_active = False
+                fd.save(update_fields=['is_active', 'updated_at'])
+            # Remove the DC link records
+            instance.freight_detail_links.all().delete()
+
+            # 3. Cascade delete Outward Freights directly linked to this DC
+            for of in instance.freight_advices.filter(is_active=True):
+                of.payments.all().delete()
+                if of.freight_detail and of.freight_detail.is_active:
+                    self._recalc_freight_detail(of.freight_detail, exclude_of=of)
+                of.is_active = False
+                of.save(update_fields=['is_active', 'updated_at'])
+
+            # 4. Reverse reserved_qty for all DC lines linked to SO lines
             affected_sos = set()
-            # Reverse reserved_qty for all DC lines linked to SO lines
             for dc_line in instance.dc_lines.select_related('linked_so_line__so').all():
                 if dc_line.linked_so_line:
                     so_line = dc_line.linked_so_line
@@ -760,13 +823,30 @@ class DispatchChallanViewSet(viewsets.ModelViewSet):
                     so_line.save(update_fields=['reserved_qty', 'updated_at'])
                     affected_sos.add(so_line.so)
 
-            # Update SO dispatch status (CLOSED → APPROVED, PARTIALLY_DISPATCHED → APPROVED, etc.)
+            # 5. Update SO dispatch status
             for so in affected_sos:
                 so.update_dispatch_status()
 
-            # Soft delete the DC
+            # 6. Soft delete the DC
             instance.is_active = False
             instance.save(update_fields=['is_active', 'updated_at'])
+
+    @staticmethod
+    def _recalc_freight_detail(fd, exclude_of=None):
+        """Recalculate FreightDetail paid/balance after outward freight changes."""
+        qs = FreightAdviceOutbound.objects.filter(freight_detail=fd, is_active=True)
+        if exclude_of:
+            qs = qs.exclude(id=exclude_of.id)
+        total = qs.aggregate(total=Sum('total_paid'))['total'] or Decimal('0')
+        fd.freight_paid = total
+        fd.balance_freight = max(Decimal('0'), (fd.total_freight or Decimal('0')) - total)
+        if fd.balance_freight <= 0 and total > 0:
+            fd.status = 'COMPLETED'
+        elif total > 0:
+            fd.status = 'IN_PROGRESS'
+        else:
+            fd.status = 'PENDING'
+        fd.save(update_fields=['freight_paid', 'balance_freight', 'status', 'updated_at'])
 
     @action(detail=True, methods=['post'])
     def release(self, request, pk=None):
@@ -814,43 +894,38 @@ class DispatchChallanViewSet(viewsets.ModelViewSet):
 
 
 class SalesInvoiceCheckViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet for sales invoice verification.
-    Handles invoice checks and acceptance.
-    """
-
+    """ViewSet for GST Sales Invoices."""
     queryset = SalesInvoiceCheck.objects.all()
-    serializer_class = SalesInvoiceCheckSerializer
     permission_classes = [permissions.IsAuthenticated, HasModulePermission]
     module_name = 'Sales Invoice'
-    filterset_fields = ['dc_reference', 'variance_flag']
-    search_fields = ['invoice_check_id', 'invoice_number']
-    ordering_fields = ['invoice_date']
+    search_fields = ['invoice_no', 'customer__customer_name', 'buyer_name']
+    ordering_fields = ['invoice_date', 'grand_total']
     ordering = ['-invoice_date']
 
     def get_queryset(self):
         return (
             SalesInvoiceCheck.objects
-            .select_related('dc_reference', 'accepted_by')
+            .select_related('company', 'customer', 'dc_reference', 'so_reference')
+            .prefetch_related('invoice_lines')
             .filter(is_active=True)
         )
 
-    @action(detail=True, methods=['post'])
-    def accept_invoice(self, request, pk=None):
-        """Accept invoice and create receivable"""
-        invoice_check = self.get_object()
+    def get_serializer_class(self):
+        if self.action in ('create', 'update', 'partial_update'):
+            return CreateUpdateSalesInvoiceSerializer
+        elif self.action == 'retrieve':
+            return SalesInvoiceDetailSerializer
+        return SalesInvoiceListSerializer
 
-        try:
-            accepted_by = request.user.stakeholderuser
-        except AttributeError:
-            raise ValidationError("User must be a stakeholder user")
-
-        InvoiceService.accept_invoice(invoice_check, accepted_by)
-
-        return Response(
-            {'detail': 'Invoice accepted and receivable created'},
-            status=status.HTTP_200_OK
-        )
+    def perform_destroy(self, instance):
+        """Soft delete invoice and cascade delete linked receivables."""
+        from django.db import transaction as db_transaction
+        with db_transaction.atomic():
+            for recv in instance.receivables.filter(is_active=True):
+                recv.is_active = False
+                recv.save(update_fields=['is_active', 'updated_at'])
+            instance.is_active = False
+            instance.save(update_fields=['is_active', 'updated_at'])
 
 
 class SalesFreightDetailViewSet(viewsets.ModelViewSet):
@@ -881,11 +956,12 @@ class SalesFreightDetailViewSet(viewsets.ModelViewSet):
         return SalesFreightDetailListSerializer
 
     def perform_destroy(self, instance):
-        """Delete Freight Detail and rollback: soft-delete linked Outward Freights."""
+        """Delete Freight Detail and cascade: delete linked Outward Freights and their Payments."""
         from django.db import transaction as db_transaction
         with db_transaction.atomic():
-            # Soft-delete any linked Outward Freights
+            # Cascade delete Outward Freights and their payments
             for of in instance.outward_freights.filter(is_active=True):
+                of.payments.all().delete()
                 of.is_active = False
                 of.save(update_fields=['is_active', 'updated_at'])
             # Soft delete
@@ -951,16 +1027,26 @@ class FreightAdviceOutboundViewSet(viewsets.ModelViewSet):
         return FreightAdviceOutboundListSerializer
 
     def perform_destroy(self, instance):
-        """Delete Outward Freight and rollback: update linked Freight Detail paid/balance."""
+        """Delete Outward Freight and rollback: update linked Freight Detail paid/balance, delete payments."""
         from django.db import transaction as db_transaction
         with db_transaction.atomic():
-            # If linked to a Freight Detail, update its paid amount
+            # Delete all payment records for this freight
+            instance.payments.all().delete()
+            # If linked to a Freight Detail, reset its paid amount
             if instance.freight_detail:
                 fd = instance.freight_detail
-                fd.freight_paid = max(Decimal('0'), fd.freight_paid - instance.total_paid)
-                fd.balance_freight = max(Decimal('0'), fd.total_freight - fd.freight_paid)
-                if fd.status == 'COMPLETED':
-                    fd.status = 'IN_PROGRESS' if fd.freight_paid > 0 else 'PENDING'
+                # Recalculate from remaining active outward freights (excluding this one)
+                remaining_paid = FreightAdviceOutbound.objects.filter(
+                    freight_detail=fd, is_active=True
+                ).exclude(id=instance.id).aggregate(total=Sum('total_paid'))['total'] or Decimal('0')
+                fd.freight_paid = remaining_paid
+                fd.balance_freight = max(Decimal('0'), (fd.total_freight or Decimal('0')) - remaining_paid)
+                if fd.balance_freight <= 0 and remaining_paid > 0:
+                    fd.status = 'COMPLETED'
+                elif remaining_paid > 0:
+                    fd.status = 'IN_PROGRESS'
+                else:
+                    fd.status = 'PENDING'
                 fd.save(update_fields=['freight_paid', 'balance_freight', 'status', 'updated_at'])
             # Soft delete
             instance.is_active = False
@@ -987,6 +1073,8 @@ class FreightAdviceOutboundViewSet(viewsets.ModelViewSet):
             **serializer.validated_data
         )
         freight.update_payment_status()
+        # Sync payment to parent FreightDetail
+        self._sync_freight_detail_paid(freight)
         return Response(
             FreightPaymentSerializer(payment).data,
             status=status.HTTP_201_CREATED
@@ -1010,7 +1098,28 @@ class FreightAdviceOutboundViewSet(viewsets.ModelViewSet):
             raise ValidationError('Payment not found.')
         payment.delete()
         freight.update_payment_status()
+        # Sync payment to parent FreightDetail
+        self._sync_freight_detail_paid(freight)
         return Response({'detail': 'Payment deleted'}, status=status.HTTP_200_OK)
+
+    def _sync_freight_detail_paid(self, freight):
+        """Sync total paid from all linked Outward Freights back to the parent FreightDetail."""
+        if not freight.freight_detail:
+            return
+        fd = freight.freight_detail
+        # Sum total_paid from ALL active outward freights linked to this freight detail
+        total = FreightAdviceOutbound.objects.filter(
+            freight_detail=fd, is_active=True
+        ).aggregate(total=Sum('total_paid'))['total'] or Decimal('0')
+        fd.freight_paid = total
+        fd.balance_freight = max(Decimal('0'), (fd.total_freight or Decimal('0')) - total)
+        if fd.balance_freight <= 0 and total > 0:
+            fd.status = 'COMPLETED'
+        elif total > 0:
+            fd.status = 'IN_PROGRESS'
+        else:
+            fd.status = 'PENDING'
+        fd.save(update_fields=['freight_paid', 'balance_freight', 'status', 'updated_at'])
 
     # --- Attachment CRUD ---
     @action(detail=True, methods=['post'], url_path='add-attachment')
@@ -1050,7 +1159,61 @@ class FreightAdviceOutboundViewSet(viewsets.ModelViewSet):
         return Response({'detail': 'Freight cancelled'}, status=status.HTTP_200_OK)
 
 
-class ReceivableLedgerViewSet(viewsets.ReadOnlyModelViewSet):
+class FreightPaymentViewSet(viewsets.ModelViewSet):
+    """Standalone ViewSet for listing/creating/deleting freight payments."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return FreightPayment.objects.select_related(
+            'freight', 'created_by'
+        ).filter(freight__is_active=True).order_by('-payment_date')
+
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return FreightPaymentListSerializer
+        return FreightPaymentListSerializer
+
+    def perform_create(self, serializer):
+        from django.db import transaction as db_transaction
+        with db_transaction.atomic():
+            freight = serializer.validated_data['freight']
+            amount = serializer.validated_data['amount_paid']
+            if amount > freight.balance:
+                raise ValidationError(
+                    f'Payment amount ({amount}) exceeds balance ({freight.balance}).'
+                )
+            payment = serializer.save(created_by=self.request.user)
+            freight.update_payment_status()
+            # Sync to FreightDetail
+            self._sync_freight_detail_paid(freight)
+
+    def perform_destroy(self, instance):
+        from django.db import transaction as db_transaction
+        with db_transaction.atomic():
+            freight = instance.freight
+            instance.delete()
+            freight.update_payment_status()
+            self._sync_freight_detail_paid(freight)
+
+    def _sync_freight_detail_paid(self, freight):
+        if not freight.freight_detail:
+            return
+        fd = freight.freight_detail
+        total = FreightAdviceOutbound.objects.filter(
+            freight_detail=fd, is_active=True
+        ).aggregate(total=Sum('total_paid'))['total'] or Decimal('0')
+        fd.freight_paid = total
+        fd.balance_freight = max(Decimal('0'), (fd.total_freight or Decimal('0')) - total)
+        if fd.balance_freight <= 0 and total > 0:
+            fd.status = 'COMPLETED'
+        elif total > 0:
+            fd.status = 'IN_PROGRESS'
+        else:
+            fd.status = 'PENDING'
+        fd.save(update_fields=['freight_paid', 'balance_freight', 'status', 'updated_at'])
+
+
+class ReceivableLedgerViewSet(viewsets.ModelViewSet):
     """
     ViewSet for accounts receivable ledger.
     Tracks invoices, payments, and aging.
@@ -1060,9 +1223,9 @@ class ReceivableLedgerViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.IsAuthenticated, HasModulePermission]
     module_name = 'Receivable'
     filterset_fields = ['customer', 'payment_status', 'escalation_flag']
-    search_fields = ['customer__name', 'invoice_reference__invoice_number']
+    search_fields = ['customer__customer_name', 'invoice_reference__invoice_no']
     ordering_fields = ['due_date', 'amount']
-    ordering = ['due_date']
+    ordering = ['-invoice_date']
 
     def get_queryset(self):
         return (
@@ -1073,9 +1236,15 @@ class ReceivableLedgerViewSet(viewsets.ReadOnlyModelViewSet):
         )
 
     def get_serializer_class(self):
+        if self.action in ('create', 'update', 'partial_update'):
+            return CreateUpdateReceivableSerializer
         if self.action == 'retrieve':
             return ReceivableLedgerDetailSerializer
         return ReceivableLedgerListSerializer
+
+    def perform_destroy(self, instance):
+        instance.is_active = False
+        instance.save(update_fields=['is_active', 'updated_at'])
 
     @action(detail=True, methods=['post'])
     def record_payment(self, request, pk=None):

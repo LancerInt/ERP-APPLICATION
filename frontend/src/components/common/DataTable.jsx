@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   ChevronsUpDown,
   ChevronUp,
@@ -33,8 +33,10 @@ export default function DataTable({
   onBulkSelect = () => {},
   selectedRows = [],
   emptyMessage = 'No data found',
+  expandableContent = null, // (row) => JSX — renders expandable sub-content
 }) {
   const [searchTerm, setSearchTerm] = useState('');
+  const [expandedRows, setExpandedRows] = useState([]);
   const [appliedFilters, setAppliedFilters] = useState({});
 
   // Normalize columns: support both {key, label} and {field, header} formats
@@ -171,6 +173,7 @@ export default function DataTable({
           {/* Header */}
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
+              {expandableContent && <th className="px-2 py-3 w-8"></th>}
               {showBulkSelect && (
                 <th className="px-6 py-3 w-12">
                   <input
@@ -219,46 +222,58 @@ export default function DataTable({
             {filteredData.length === 0 ? (
               <tr>
                 <td
-                  colSpan={normalizedColumns.length + (showBulkSelect ? 1 : 0)}
+                  colSpan={normalizedColumns.length + (showBulkSelect ? 1 : 0) + (expandableContent ? 1 : 0)}
                   className="px-6 py-12 text-center text-slate-500"
                 >
                   <p className="text-sm">{searchTerm ? `No results for "${searchTerm}"` : emptyMessage}</p>
                 </td>
               </tr>
             ) : (
-              filteredData.map((row) => (
-                <tr
-                  key={row.id}
-                  onClick={() => { if (window.getSelection()?.toString()) return; onRowClick && onRowClick(row); }}
-                  className={`transition ${
-                    onRowClick
-                      ? 'cursor-pointer hover:bg-blue-50'
-                      : 'hover:bg-slate-50'
-                  }`}
-                >
-                  {showBulkSelect && (
-                    <td className="px-4 py-3 w-12">
-                      <input
-                        type="checkbox"
-                        checked={selectedRows.includes(row.id)}
-                        onChange={(e) => handleSelectRow(row.id, e.target.checked)}
-                        onClick={(e) => e.stopPropagation()}
-                        className="rounded"
-                      />
-                    </td>
-                  )}
-                  {normalizedColumns.map((col) => (
-                    <td
-                      key={`${row.id}-${col.field}`}
-                      className="px-4 py-3 text-sm text-slate-700"
+              filteredData.map((row) => {
+                const isExpanded = expandedRows.includes(row.id);
+                return (
+                  <React.Fragment key={row.id}>
+                    <tr
+                      onClick={() => { if (window.getSelection()?.toString()) return; onRowClick && onRowClick(row); }}
+                      className={`transition ${
+                        onRowClick ? 'cursor-pointer hover:bg-blue-50' : 'hover:bg-slate-50'
+                      } ${isExpanded ? 'bg-blue-50/50' : ''}`}
                     >
-                      {col.render
-                        ? col.render(row[col.field], row)
-                        : row[col.field]}
-                    </td>
-                  ))}
-                </tr>
-              ))
+                      {expandableContent && (
+                        <td className="px-2 py-3 w-8">
+                          <button onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            setExpandedRows(prev => prev.includes(row.id) ? prev.filter(id => id !== row.id) : [...prev, row.id]);
+                          }} className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition">
+                            <ChevronDown size={16} className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+                          </button>
+                        </td>
+                      )}
+                      {showBulkSelect && (
+                        <td className="px-4 py-3 w-12">
+                          <input type="checkbox" checked={selectedRows.includes(row.id)}
+                            onChange={(e) => handleSelectRow(row.id, e.target.checked)}
+                            onClick={(e) => e.stopPropagation()} className="rounded" />
+                        </td>
+                      )}
+                      {normalizedColumns.map((col) => (
+                        <td key={`${row.id}-${col.field}`}
+                          className="px-4 py-3 text-sm text-slate-700 whitespace-nowrap">
+                          {col.render ? col.render(row[col.field], row) : row[col.field]}
+                        </td>
+                      ))}
+                    </tr>
+                    {isExpanded && expandableContent && (
+                      <tr className="bg-slate-50/80">
+                        <td colSpan={normalizedColumns.length + (expandableContent ? 1 : 0) + (showBulkSelect ? 1 : 0)} className="px-4 py-3">
+                          {expandableContent(row)}
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })
             )}
           </tbody>
         </table>

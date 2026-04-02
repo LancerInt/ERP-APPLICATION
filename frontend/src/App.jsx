@@ -105,13 +105,20 @@ import DCNew from './pages/sales/dc/new.jsx';
 import DCDetail from './pages/sales/dc/[id].jsx';
 import DCEdit from './pages/sales/dc/edit.jsx';
 import InvoiceNew from './pages/sales/invoices/new.jsx';
+import InvoiceDetail from './pages/sales/invoices/[id].jsx';
+import InvoiceEdit from './pages/sales/invoices/edit.jsx';
 import FreightDetailsNew from './pages/sales/freight-details/new.jsx';
 import FreightDetailsDetail from './pages/sales/freight-details/[id].jsx';
 import FreightDetailsEdit from './pages/sales/freight-details/edit.jsx';
 import SalesFreightNew from './pages/sales/freight/new.jsx';
 import SalesFreightDetail from './pages/sales/freight/[id].jsx';
 import SalesFreightEdit from './pages/sales/freight/edit.jsx';
+import FreightPayments from './pages/sales/freight-payments/index.jsx';
+import FreightPaymentNew from './pages/sales/freight-payments/new.jsx';
+import FreightPaymentDetail from './pages/sales/freight-payments/[id].jsx';
 import ReceivableNew from './pages/sales/receivables/new.jsx';
+import ReceivableDetail from './pages/sales/receivables/[id].jsx';
+import ReceivableEdit from './pages/sales/receivables/edit.jsx';
 
 // Production - List
 import BOMList from './pages/production/bom/index.jsx';
@@ -314,6 +321,8 @@ function App() {
           <Route path="/sales/dc/:id/edit" element={<ProtectedRoute module="Dispatch Challan" action="edit"><DCEdit /></ProtectedRoute>} />
           <Route path="/sales/invoices" element={<ProtectedRoute module="Sales Invoice"><SalesInvoice /></ProtectedRoute>} />
           <Route path="/sales/invoices/new" element={<ProtectedRoute module="Sales Invoice" action="create"><InvoiceNew /></ProtectedRoute>} />
+          <Route path="/sales/invoices/:id" element={<ProtectedRoute module="Sales Invoice"><InvoiceDetail /></ProtectedRoute>} />
+          <Route path="/sales/invoices/:id/edit" element={<ProtectedRoute module="Sales Invoice" action="edit"><InvoiceEdit /></ProtectedRoute>} />
           <Route path="/sales/freight-details" element={<ProtectedRoute module="Freight Advice"><FreightDetails /></ProtectedRoute>} />
           <Route path="/sales/freight-details/new" element={<ProtectedRoute module="Freight Advice" action="create"><FreightDetailsNew /></ProtectedRoute>} />
           <Route path="/sales/freight-details/:id" element={<ProtectedRoute module="Freight Advice"><FreightDetailsDetail /></ProtectedRoute>} />
@@ -322,8 +331,13 @@ function App() {
           <Route path="/sales/freight/new" element={<ProtectedRoute module="Freight Advice" action="create"><SalesFreightNew /></ProtectedRoute>} />
           <Route path="/sales/freight/:id" element={<ProtectedRoute module="Freight Advice"><SalesFreightDetail /></ProtectedRoute>} />
           <Route path="/sales/freight/:id/edit" element={<ProtectedRoute module="Freight Advice" action="edit"><SalesFreightEdit /></ProtectedRoute>} />
+          <Route path="/sales/freight-payments" element={<ProtectedRoute module="Freight Advice"><FreightPayments /></ProtectedRoute>} />
+          <Route path="/sales/freight-payments/new" element={<ProtectedRoute module="Freight Advice" action="create"><FreightPaymentNew /></ProtectedRoute>} />
+          <Route path="/sales/freight-payments/:id" element={<ProtectedRoute module="Freight Advice"><FreightPaymentDetail /></ProtectedRoute>} />
           <Route path="/sales/receivables" element={<ProtectedRoute module="Receivable"><Receivables /></ProtectedRoute>} />
           <Route path="/sales/receivables/new" element={<ProtectedRoute module="Receivable" action="create"><ReceivableNew /></ProtectedRoute>} />
+          <Route path="/sales/receivables/:id" element={<ProtectedRoute module="Receivable"><ReceivableDetail /></ProtectedRoute>} />
+          <Route path="/sales/receivables/:id/edit" element={<ProtectedRoute module="Receivable" action="edit"><ReceivableEdit /></ProtectedRoute>} />
 
           {/* ========== PRODUCTION ========== */}
           <Route path="/production/bom" element={<ProtectedRoute module="BOM Request"><BOMList /></ProtectedRoute>} />

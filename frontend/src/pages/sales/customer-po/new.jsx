@@ -51,7 +51,7 @@ export default function CreateCustomerPO() {
   const [formData, setFormData] = useState({
     company: '', warehouse: '', customer: '',
     po_number: '', po_date: new Date().toISOString().split('T')[0],
-    price_list: '', freight_terms: 'TO_PAY', payment_terms: 'NET_15',
+    price_list: '', payment_terms: 'NET_15',
     currency: 'INR', required_ship_date: '',
     delivery_type: 'EX_FACTORY', indent_no: '', indent_date: '',
     party_code: '', delivery_due_date: '', sales_order_ref: '',
@@ -121,6 +121,7 @@ export default function CreateCustomerPO() {
         consignee_name: custData.customer_name || custData.name || '',
         consignee_address: addrStr,
         consignee_gstin: custData.gstin || '',
+        delivery_location: addrStr || '',
       }));
       setFilteredPriceLists([]); setPriceLines([]);
       if (value) {
@@ -283,10 +284,6 @@ export default function CreateCustomerPO() {
           <div>
             <h3 className="text-lg font-semibold text-slate-800 mb-4 pb-2 border-b">Terms & Currency</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <div><label className="block text-sm font-medium text-slate-700 mb-1">Freight Terms</label>
-                <select name="freight_terms" value={formData.freight_terms} onChange={handleChange} className={inputClass}>
-                  <option value="">Select</option><option value="PAID">Paid</option><option value="TO_PAY">To Pay</option>
-                </select></div>
               <div><label className="block text-sm font-medium text-slate-700 mb-1">Payment Terms</label>
                 <select name="payment_terms" value={formData.payment_terms} onChange={handleChange} className={inputClass}>
                   <option value="">Select</option><option value="NET_15">Net 15</option><option value="NET_30">Net 30</option><option value="NET_45">Net 45</option>
@@ -310,12 +307,11 @@ export default function CreateCustomerPO() {
                 <input type="date" name="delivery_due_date" value={formData.delivery_due_date} onChange={handleChange} className={inputClass} /></div>
               <div><label className="block text-sm font-medium text-slate-700 mb-1">Customer Sales Order Ref</label>
                 <input type="text" name="sales_order_ref" value={formData.sales_order_ref} onChange={handleChange} className={inputClass} placeholder="e.g. 647532" /></div>
-              <div><label className="block text-sm font-medium text-slate-700 mb-1">Destination</label>
-                <input type="text" name="destination" value={formData.destination} onChange={handleChange} className={inputClass} placeholder="e.g. Salem - Tamil Nadu" /></div>
               <div><label className="block text-sm font-medium text-slate-700 mb-1">Dispatched Through</label>
                 <input type="text" name="dispatched_through" value={formData.dispatched_through} onChange={handleChange} className={inputClass} /></div>
               <div><label className="block text-sm font-medium text-slate-700 mb-1">Delivery Location</label>
-                <input type="text" name="delivery_location" value={formData.delivery_location} onChange={handleChange} className={inputClass} /></div>
+                <input type="text" name="delivery_location" value={formData.delivery_location} onChange={handleChange} className={inputClass} />
+                <p className="text-xs text-slate-400 mt-0.5">Auto-filled from customer address</p></div>
               <div><label className="block text-sm font-medium text-slate-700 mb-1">Indent No</label>
                 <input type="text" name="indent_no" value={formData.indent_no} onChange={handleChange} className={inputClass} placeholder="e.g. POI-1040125-00432" /></div>
               <div><label className="block text-sm font-medium text-slate-700 mb-1">Indent Date</label>
@@ -371,7 +367,6 @@ export default function CreateCustomerPO() {
                   <th className="text-left px-2 py-2 font-medium text-slate-600">#</th>
                   <th className="text-left px-2 py-2 font-medium text-slate-600">Category</th>
                   <th className="text-left px-2 py-2 font-medium text-slate-600">Product <span className="text-red-500">*</span></th>
-                  <th className="text-left px-2 py-2 font-medium text-slate-600">Item Code</th>
                   <th className="text-left px-2 py-2 font-medium text-slate-600">HSN</th>
                   <th className="text-left px-2 py-2 font-medium text-slate-600">UOM</th>
                   <th className="text-right px-2 py-2 font-medium text-slate-600">Qty <span className="text-red-500">*</span></th>
@@ -395,7 +390,6 @@ export default function CreateCustomerPO() {
                         {GOODS_SUB_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></td>
                       <td className="px-2 py-2"><select value={line.parsed_sku} onChange={(e) => handleLineChange(idx, 'parsed_sku', e.target.value)} disabled={!line.product_category} className={`${inputClass} disabled:bg-slate-100`} style={{ minWidth: '140px' }}>
                         <option value="">{line.product_category ? 'Select' : 'Category first'}</option>{getFilteredProducts(line.product_category).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></td>
-                      <td className="px-2 py-2"><input type="text" value={line.item_code} onChange={(e) => handleLineChange(idx, 'item_code', e.target.value)} className={inputClass} style={{ minWidth: '80px' }} placeholder="Item Code" /></td>
                       <td className="px-2 py-2"><input type="text" value={line.hsn_code} onChange={(e) => handleLineChange(idx, 'hsn_code', e.target.value)} className={inputClass} style={{ minWidth: '80px' }} placeholder="HSN" /></td>
                       <td className="px-2 py-2"><select value={line.uom} onChange={(e) => handleLineChange(idx, 'uom', e.target.value)} className={inputClass} style={{ minWidth: '65px' }}>
                         <option value="KG">KG</option><option value="LITRE">LITRE</option><option value="KILOGRAM">KILOGRAM</option><option value="MTS">MTS</option><option value="NOS">NOS</option><option value="PCS">PCS</option><option value="BOX">BOX</option><option value="BAG">BAG</option><option value="TON">TON</option><option value="LTR">LTR</option><option value="SET">SET</option></select></td>
@@ -403,8 +397,16 @@ export default function CreateCustomerPO() {
                       <td className="px-2 py-2"><input type="number" step="0.01" min="0" value={line.price} onChange={(e) => handleLineChange(idx, 'price', e.target.value)} className={inputClass} style={{ minWidth: '80px' }} placeholder="0.00" /></td>
                       <td className="px-2 py-2 text-right font-medium whitespace-nowrap text-slate-600">{amt > 0 ? fmt(amt) : '-'}</td>
                       <td className="px-2 py-2"><input type="number" step="0.01" min="0" value={line.discount} onChange={(e) => handleLineChange(idx, 'discount', e.target.value)} className={inputClass} style={{ minWidth: '60px' }} /></td>
-                      <td className="px-2 py-2"><input type="number" step="0.01" min="0" value={line.sgst_percent} onChange={(e) => { handleLineChange(idx, 'sgst_percent', e.target.value); const s = parseFloat(e.target.value)||0; const c = parseFloat(line.cgst_percent)||0; handleLineChange(idx, 'gst', String(s+c)); }} className={inputClass} style={{ minWidth: '55px' }} /></td>
-                      <td className="px-2 py-2"><input type="number" step="0.01" min="0" value={line.cgst_percent} onChange={(e) => { handleLineChange(idx, 'cgst_percent', e.target.value); const c = parseFloat(e.target.value)||0; const s = parseFloat(line.sgst_percent)||0; handleLineChange(idx, 'gst', String(s+c)); }} className={inputClass} style={{ minWidth: '55px' }} /></td>
+                      <td className="px-2 py-2"><input type="number" step="0.01" min="0" value={line.sgst_percent}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setPoLines(prev => prev.map((l, i) => i !== idx ? l : { ...l, sgst_percent: val, gst: String((parseFloat(val) || 0) + (parseFloat(l.cgst_percent) || 0)) }));
+                        }} className={inputClass} style={{ minWidth: '55px' }} /></td>
+                      <td className="px-2 py-2"><input type="number" step="0.01" min="0" value={line.cgst_percent}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setPoLines(prev => prev.map((l, i) => i !== idx ? l : { ...l, cgst_percent: val, gst: String((parseFloat(l.sgst_percent) || 0) + (parseFloat(val) || 0)) }));
+                        }} className={inputClass} style={{ minWidth: '55px' }} /></td>
                       <td className="px-2 py-2"><input type="number" step="0.01" min="0" value={line.igst_percent} onChange={(e) => handleLineChange(idx, 'igst_percent', e.target.value)} className={inputClass} style={{ minWidth: '55px' }} /></td>
                       <td className="px-2 py-2 text-right font-semibold whitespace-nowrap">{netAmt > 0 ? fmt(netAmt) : '-'}</td>
                       <td className="px-2 py-2"><input type="date" value={line.delivery_schedule_date || ''} onChange={(e) => handleLineChange(idx, 'delivery_schedule_date', e.target.value)} className={inputClass} style={{ minWidth: '110px' }} /></td>
@@ -414,7 +416,7 @@ export default function CreateCustomerPO() {
                 })}</tbody>
                 <tfoot>
                   <tr className="bg-slate-50 font-semibold border-t-2 border-slate-300">
-                    <td colSpan="6" className="px-2 py-2 text-right text-slate-600">Totals:</td>
+                    <td colSpan="5" className="px-2 py-2 text-right text-slate-600">Totals:</td>
                     <td className="px-2 py-2 text-right">{fmtQty(totalQty)}</td>
                     <td></td>
                     <td className="px-2 py-2 text-right">{fmt(totalAmount)}</td>

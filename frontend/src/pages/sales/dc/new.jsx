@@ -51,13 +51,16 @@ export default function CreateDispatchChallan() {
     dc_no: '',
     selected_so: '',
     warehouse: '',
+    company_name: '',
+    customer_name: '',
+    freight_terms: 'TO_PAY',
+    payment_terms: 'NET_15',
+    currency: 'INR',
     transporter: '',
     invoice_no: '',
     invoice_date: '',
     lorry_no: '',
     driver_contact: '',
-    freight_rate_type: '',
-    freight_rate_value: '',
   });
   const [dcLines, setDcLines] = useState([{ ...emptyDCLine }]);
 
@@ -87,7 +90,13 @@ export default function CreateDispatchChallan() {
       const res = await apiClient.get(`/api/sales/orders/${soId}/dispatch-lines/`);
       const data = res.data;
       setSOInfo(data);
-      setFormData(prev => ({ ...prev, warehouse: data.warehouse || '' }));
+      setFormData(prev => ({
+        ...prev,
+        warehouse: data.warehouse || '',
+        company_name: data.company_name || '',
+        customer_name: data.customer_name || '',
+        freight_terms: data.freight_terms || prev.freight_terms,
+      }));
 
       // Auto-fill DC lines from SO lines with pending qty
       const lines = (data.lines || [])
@@ -204,8 +213,6 @@ export default function CreateDispatchChallan() {
         invoice_date: formData.invoice_date || null,
         lorry_no: formData.lorry_no || '',
         driver_contact: formData.driver_contact || '',
-        freight_rate_type: formData.freight_rate_type || '',
-        freight_rate_value: formData.freight_rate_value || null,
         dc_lines: validLines.map(l => ({
           product: l.product,
           quantity_dispatched: l.quantity_dispatched,
@@ -255,15 +262,47 @@ export default function CreateDispatchChallan() {
                 )}
               </div>
               <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Company</label>
+                <input type="text" value={formData.company_name} readOnly className={`${inputClass} bg-slate-50`} placeholder="Auto-filled from SO" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Customer</label>
+                <input type="text" value={formData.customer_name} readOnly className={`${inputClass} bg-slate-50`} placeholder="Auto-filled from SO" />
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Warehouse <span className="text-red-500">*</span></label>
                 <input type="text" value={soInfo?.warehouse_name || ''} readOnly={!!soInfo} className={`${errors.warehouse ? errorInputClass : inputClass} ${soInfo ? 'bg-slate-50' : ''}`} placeholder={soInfo ? '' : 'Auto-filled from SO'} />
                 {!soInfo && (
                   <select name="warehouse" value={formData.warehouse} onChange={handleChange} className={`${errors.warehouse ? errorInputClass : inputClass} mt-1`}>
                     <option value="">Select Warehouse</option>
-                    {/* For manual DC without SO */}
                   </select>
                 )}
                 {errors.warehouse && <p className="text-xs text-red-500 mt-1">{errors.warehouse}</p>}
+              </div>
+            </div>
+          </div>
+
+          {/* Terms & Currency */}
+          <div>
+            <h3 className="text-lg font-semibold text-slate-800 mb-4 pb-2 border-b">Terms & Currency</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Freight Terms</label>
+                <select name="freight_terms" value={formData.freight_terms} onChange={handleChange} className={inputClass}>
+                  <option value="">Select</option><option value="PAID">Paid</option><option value="TO_PAY">To Pay</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Payment Terms</label>
+                <select name="payment_terms" value={formData.payment_terms} onChange={handleChange} className={inputClass}>
+                  <option value="">Select</option><option value="NET_15">Net 15</option><option value="NET_30">Net 30</option><option value="NET_45">Net 45</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Currency</label>
+                <select name="currency" value={formData.currency} onChange={handleChange} className={inputClass}>
+                  <option value="INR">INR</option><option value="USD">USD</option>
+                </select>
               </div>
             </div>
           </div>
@@ -301,25 +340,6 @@ export default function CreateDispatchChallan() {
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Driver Contact</label>
                 <input type="text" name="driver_contact" value={formData.driver_contact} onChange={handleChange} className={inputClass} placeholder="Driver phone number" />
-              </div>
-            </div>
-          </div>
-
-          {/* Freight Details */}
-          <div>
-            <h3 className="text-lg font-semibold text-slate-800 mb-4 pb-2 border-b">Freight Details</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Freight Rate Type</label>
-                <select name="freight_rate_type" value={formData.freight_rate_type} onChange={handleChange} className={inputClass}>
-                  <option value="">Select Type</option>
-                  <option value="PER_KM">Per Kilometer</option>
-                  <option value="FLAT">Flat Rate</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Freight Rate Value</label>
-                <input type="number" step="0.01" min="0" name="freight_rate_value" value={formData.freight_rate_value} onChange={handleChange} className={inputClass} placeholder="0.00" />
               </div>
             </div>
           </div>

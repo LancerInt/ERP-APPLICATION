@@ -22,9 +22,8 @@ export default function EditOutwardFreight() {
   const [formData, setFormData] = useState({
     advice_no: '', dispatch_challan: '', transporter: '', freight_date: '', invoice_date: '',
     customer_name: '', lorry_no: '', destination: '', shipment_quantity: '', quantity_uom: 'MTS',
-    base_amount: '', discount: '0', loading_wages_amount: '0', unloading_wages_amount: '0',
-    freight_per_ton: '0', additional_freight: '0', unloading_charges: '0',
-    less_amount: '0', tds_less: '0', remarks: '',
+    base_amount: '', unloading_wages_amount: '0',
+    freight_per_ton: '0', unloading_charges: '0', remarks: '',
   });
   const [dcLinks, setDcLinks] = useState([{ ...emptyDCLink }]);
 
@@ -44,11 +43,10 @@ export default function EditOutwardFreight() {
           invoice_date: f.invoice_date || '', customer_name: f.customer_name || '',
           lorry_no: f.lorry_no || '', destination: f.destination || '',
           shipment_quantity: f.shipment_quantity || '', quantity_uom: f.quantity_uom || 'MTS',
-          base_amount: f.base_amount || '', discount: f.discount || '0',
-          loading_wages_amount: f.loading_wages_amount || '0', unloading_wages_amount: f.unloading_wages_amount || '0',
-          freight_per_ton: f.freight_per_ton || '0', additional_freight: f.additional_freight || '0',
-          unloading_charges: f.unloading_charges || '0', less_amount: f.less_amount || '0',
-          tds_less: f.tds_less || '0', remarks: f.remarks || '',
+          base_amount: f.base_amount || '',
+          unloading_wages_amount: f.unloading_wages_amount || '0',
+          freight_per_ton: f.freight_per_ton || '0',
+          unloading_charges: f.unloading_charges || '0', remarks: f.remarks || '',
         });
         const links = (f.dc_links || []).map(l => ({ dc: l.dc, invoice_no: l.invoice_no || '', destination: l.destination || '' }));
         setDcLinks(links.length > 0 ? links : [{ ...emptyDCLink }]);
@@ -64,9 +62,8 @@ export default function EditOutwardFreight() {
   const removeDCLink = (idx) => { if (dcLinks.length > 1) setDcLinks(prev => prev.filter((_, i) => i !== idx)); };
 
   const baseAmt = parseFloat(formData.base_amount) || 0;
-  const payableAmount = baseAmt - (parseFloat(formData.discount) || 0) + (parseFloat(formData.loading_wages_amount) || 0)
-    + (parseFloat(formData.unloading_wages_amount) || 0) + (parseFloat(formData.additional_freight) || 0)
-    + (parseFloat(formData.unloading_charges) || 0) - (parseFloat(formData.less_amount) || 0) - (parseFloat(formData.tds_less) || 0);
+  const payableAmount = baseAmt + (parseFloat(formData.unloading_wages_amount) || 0)
+    + (parseFloat(formData.unloading_charges) || 0);
   const fmt = (v) => `₹${Number(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
 
   const handleSubmit = async (e) => {
@@ -79,11 +76,10 @@ export default function EditOutwardFreight() {
         invoice_date: formData.invoice_date || null, customer_name: formData.customer_name || '',
         lorry_no: formData.lorry_no || '', destination: formData.destination || '',
         shipment_quantity: formData.shipment_quantity || null, quantity_uom: formData.quantity_uom || '',
-        base_amount: formData.base_amount || 0, discount: formData.discount || 0,
-        loading_wages_amount: formData.loading_wages_amount || 0, unloading_wages_amount: formData.unloading_wages_amount || 0,
-        freight_per_ton: formData.freight_per_ton || 0, additional_freight: formData.additional_freight || 0,
-        unloading_charges: formData.unloading_charges || 0, less_amount: formData.less_amount || 0,
-        tds_less: formData.tds_less || 0, remarks: formData.remarks || '',
+        base_amount: formData.base_amount || 0,
+        unloading_wages_amount: formData.unloading_wages_amount || 0,
+        freight_per_ton: formData.freight_per_ton || 0,
+        unloading_charges: formData.unloading_charges || 0, remarks: formData.remarks || '',
         dc_links: dcLinks.filter(l => l.dc).map(l => ({ dc: l.dc, invoice_no: l.invoice_no || '', destination: l.destination || '' })),
       });
       toast.success('Freight updated!');
@@ -146,10 +142,9 @@ export default function EditOutwardFreight() {
             <h3 className="text-lg font-semibold text-slate-800 mb-4 pb-2 border-b">Freight Value & Costs</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {[
-                ['base_amount', 'Freight Value (Base) *'], ['freight_per_ton', 'Freight Per Ton'], ['discount', 'Discount'],
-                ['loading_wages_amount', 'Loading Wages'], ['unloading_wages_amount', 'Unloading Wages'],
-                ['additional_freight', 'Additional Freight'], ['unloading_charges', 'Unloading Charges'],
-                ['less_amount', 'Less Amount'], ['tds_less', 'TDS Less'],
+                ['base_amount', 'Freight Value (Base) *'], ['freight_per_ton', 'Freight Per Ton'],
+                ['unloading_wages_amount', 'Unloading Wages'],
+                ['unloading_charges', 'Unloading Charges'],
               ].map(([name, label]) => (
                 <div key={name}><label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>
                   <div className="relative"><span className="absolute left-3 top-2.5 text-slate-400 text-sm">₹</span>

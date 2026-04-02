@@ -379,69 +379,11 @@ class DeliveryLocationAdmin(admin.ModelAdmin):
 
 @admin.register(SalesInvoiceCheck)
 class SalesInvoiceCheckAdmin(admin.ModelAdmin):
-    """Admin for invoice checks"""
-    list_display = [
-        'invoice_check_id',
-        'invoice_number',
-        'invoice_date',
-        'variance_flag',
-        'accepted_by',
-    ]
-    list_filter = [
-        'variance_flag',
-        'invoice_date',
-        'accepted_by',
-    ]
-    search_fields = [
-        'invoice_check_id',
-        'invoice_number',
-        'dc_reference__dc_no',
-    ]
-    readonly_fields = [
-        'id',
-        'invoice_check_id',
-        'variance_amount',
-        'variance_flag',
-        'created_at',
-        'updated_at',
-    ]
-    fieldsets = (
-        ('Invoice Information', {
-            'fields': (
-                'id',
-                'invoice_check_id',
-                'dc_reference',
-                'invoice_number',
-                'invoice_date',
-                'statutory_invoice_upload',
-            )
-        }),
-        ('Amount Reconciliation', {
-            'fields': (
-                'total_value_upload',
-                'total_value_so',
-                'variance_amount',
-                'variance_flag',
-            )
-        }),
-        ('Acceptance', {
-            'fields': (
-                'accepted_by',
-                'acceptance_timestamp',
-            )
-        }),
-        ('Remarks', {
-            'fields': ('remarks',)
-        }),
-        ('Metadata', {
-            'fields': (
-                'created_at',
-                'updated_at',
-                'is_active',
-            ),
-            'classes': ('collapse',)
-        }),
-    )
+    """Admin for GST Sales Invoices"""
+    list_display = ['invoice_no', 'invoice_date', 'customer', 'grand_total', 'status']
+    list_filter = ['status', 'invoice_date']
+    search_fields = ['invoice_no', 'customer__customer_name']
+    readonly_fields = ['id', 'created_at', 'updated_at']
 
 
 class OutboundPaymentScheduleInline(admin.TabularInline):

@@ -12,6 +12,7 @@ from .models import (
     DCLine,
     DeliveryLocation,
     SalesInvoiceCheck,
+    SalesInvoiceLine,
     SalesFreightDetail,
     FreightDetailDCLink,
     FreightAdviceOutbound,
@@ -270,6 +271,7 @@ class SOLineSerializer(serializers.ModelSerializer):
 class SalesOrderListSerializer(serializers.ModelSerializer):
     customer_name = serializers.CharField(source='customer.customer_name', read_only=True)
     warehouse_name = serializers.CharField(source='warehouse.name', read_only=True)
+    price_list_name = serializers.CharField(source='price_list.price_list_id', read_only=True, default='')
     total_amount = serializers.SerializerMethodField()
 
     class Meta:
@@ -284,7 +286,11 @@ class SalesOrderListSerializer(serializers.ModelSerializer):
             'approval_status',
             'warehouse',
             'warehouse_name',
+            'price_list_name',
+            'freight_terms',
+            'credit_terms',
             'destination',
+            'remarks',
             'total_amount',
         ]
         read_only_fields = ['id']
@@ -507,8 +513,7 @@ class CreateUpdateDCSerializer(serializers.ModelSerializer):
         model = DispatchChallan
         fields = [
             'dc_no', 'warehouse', 'transporter', 'invoice_no', 'invoice_date',
-            'lorry_no', 'driver_contact',
-            'freight_rate_type', 'freight_rate_value', 'dc_lines',
+            'lorry_no', 'driver_contact', 'dc_lines',
         ]
         extra_kwargs = {
             'dc_no': {'required': False, 'allow_blank': True},
@@ -517,8 +522,6 @@ class CreateUpdateDCSerializer(serializers.ModelSerializer):
             'invoice_date': {'required': False, 'allow_null': True},
             'lorry_no': {'required': False, 'allow_blank': True},
             'driver_contact': {'required': False, 'allow_blank': True},
-            'freight_rate_type': {'required': False, 'allow_blank': True},
-            'freight_rate_value': {'required': False, 'allow_null': True},
         }
 
     def validate_dc_lines(self, lines_data):
@@ -621,7 +624,15 @@ class DeliveryLocationSerializer(serializers.ModelSerializer):
 
 class DispatchChallanListSerializer(serializers.ModelSerializer):
     warehouse_name = serializers.CharField(source='warehouse.name', read_only=True)
+    transporter_name = serializers.CharField(source='transporter.name', read_only=True, default='')
     total_dispatch_qty = serializers.SerializerMethodField()
+    linked_so_id = serializers.SerializerMethodField()
+
+    def get_linked_so_id(self, obj):
+        first_line = obj.dc_lines.select_related('linked_so_line__so').first()
+        if first_line and first_line.linked_so_line:
+            return str(first_line.linked_so_line.so.id)
+        return None
 
     class Meta:
         model = DispatchChallan
@@ -633,8 +644,13 @@ class DispatchChallanListSerializer(serializers.ModelSerializer):
             'dispatch_date',
             'invoice_no',
             'invoice_date',
+            'transporter',
+            'transporter_name',
+            'lorry_no',
+            'driver_contact',
             'status',
             'total_dispatch_qty',
+            'linked_so_id',
         ]
         read_only_fields = ['id']
         extra_kwargs = {
@@ -673,8 +689,6 @@ class DispatchChallanDetailSerializer(serializers.ModelSerializer):
             'transporter_name',
             'invoice_no',
             'invoice_date',
-            'freight_rate_type',
-            'freight_rate_value',
             'freight_amount_total',
             'lorry_no',
             'driver_contact',
@@ -692,8 +706,6 @@ class DispatchChallanDetailSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'dc_no']
         extra_kwargs = {
             'transporter': {'required': False},
-            'freight_rate_type': {'required': False, 'allow_blank': True},
-            'freight_rate_value': {'required': False},
             'freight_amount_total': {'required': False},
             'lorry_no': {'required': False, 'allow_blank': True},
             'driver_contact': {'required': False, 'allow_blank': True},
@@ -731,47 +743,188 @@ class DispatchChallanDetailSerializer(serializers.ModelSerializer):
         return so.destination if so else ''
 
 
-class SalesInvoiceCheckSerializer(serializers.ModelSerializer):
-    dc_reference_number = serializers.CharField(
-        source='dc_reference.dc_no',
-        read_only=True
-    )
-    accepted_by_name = serializers.CharField(
-        source='accepted_by.user.get_full_name',
-        read_only=True,
-        allow_null=True
-    )
+class SalesInvoiceLineSerializer(serializers.ModelSerializer):
+    product_name = serializers.CharField(source='product.product_name', read_only=True, default='')
+
+    class Meta:
+        model = SalesInvoiceLine
+        fields = [
+            'id', 'sl_no', 'product', 'product_name', 'description', 'hsn_sac',
+            'quantity', 'uom', 'rate', 'discount_percent', 'amount',
+            'gst_rate', 'cgst_rate', 'cgst_amount', 'sgst_rate', 'sgst_amount',
+            'igst_rate', 'igst_amount',
+        ]
+        read_only_fields = ['id']
+
+
+class SalesInvoiceLineWriteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SalesInvoiceLine
+        fields = [
+            'sl_no', 'product', 'description', 'hsn_sac',
+            'quantity', 'uom', 'rate', 'discount_percent',
+            'gst_rate', 'cgst_rate', 'sgst_rate', 'igst_rate',
+        ]
+        extra_kwargs = {
+            'product': {'required': False, 'allow_null': True},
+            'hsn_sac': {'required': False, 'allow_blank': True},
+            'uom': {'required': False, 'allow_blank': True},
+            'discount_percent': {'required': False},
+            'cgst_rate': {'required': False},
+            'sgst_rate': {'required': False},
+            'igst_rate': {'required': False},
+        }
+
+
+class SalesInvoiceListSerializer(serializers.ModelSerializer):
+    customer_name = serializers.CharField(source='customer.customer_name', read_only=True, default='')
+    company_name = serializers.CharField(source='company.legal_name', read_only=True, default='')
+    dc_no = serializers.CharField(source='dc_reference.dc_no', read_only=True, default='')
+    so_no = serializers.CharField(source='so_reference.so_no', read_only=True, default='')
+    line_count = serializers.SerializerMethodField()
 
     class Meta:
         model = SalesInvoiceCheck
         fields = [
-            'id',
-            'invoice_check_id',
-            'dc_reference',
-            'dc_reference_number',
-            'statutory_invoice_upload',
-            'invoice_number',
-            'invoice_date',
-            'total_value_upload',
-            'total_value_so',
-            'variance_amount',
-            'variance_flag',
-            'remarks',
-            'acceptance_timestamp',
-            'accepted_by',
-            'accepted_by_name',
+            'id', 'invoice_no', 'invoice_date', 'company', 'company_name',
+            'customer', 'customer_name', 'dc_reference', 'dc_no',
+            'so_reference', 'so_no', 'buyers_order_no', 'destination',
+            'subtotal', 'cgst_total', 'sgst_total', 'igst_total',
+            'round_off', 'grand_total', 'status', 'line_count', 'created_at',
         ]
-        read_only_fields = [
-            'id',
-            'invoice_check_id',
-            'variance_amount',
-            'variance_flag',
-            'acceptance_timestamp',
+        read_only_fields = ['id']
+
+    def get_line_count(self, obj):
+        return obj.invoice_lines.count()
+
+
+class SalesInvoiceDetailSerializer(serializers.ModelSerializer):
+    customer_name = serializers.CharField(source='customer.customer_name', read_only=True, default='')
+    company_name = serializers.CharField(source='company.legal_name', read_only=True, default='')
+    dc_no = serializers.CharField(source='dc_reference.dc_no', read_only=True, default='')
+    so_no = serializers.CharField(source='so_reference.so_no', read_only=True, default='')
+    invoice_lines = SalesInvoiceLineSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = SalesInvoiceCheck
+        fields = [
+            'id', 'invoice_no', 'invoice_date', 'status',
+            'company', 'company_name', 'company_gstin', 'company_pan',
+            'company_state', 'company_state_code',
+            'customer', 'customer_name',
+            'consignee_name', 'consignee_address', 'consignee_gstin', 'consignee_state', 'consignee_state_code',
+            'buyer_name', 'buyer_address', 'buyer_gstin', 'buyer_state', 'buyer_state_code',
+            'dc_reference', 'dc_no', 'so_reference', 'so_no',
+            'buyers_order_no', 'buyers_order_date',
+            'delivery_note', 'delivery_note_date', 'other_references',
+            'dispatch_doc_no', 'dispatch_doc_date', 'dispatched_through',
+            'destination', 'terms_of_delivery', 'payment_terms',
+            'subtotal', 'cgst_total', 'sgst_total', 'igst_total',
+            'round_off', 'grand_total', 'amount_in_words',
+            'remarks', 'declaration',
+            'invoice_lines', 'created_at',
+        ]
+        read_only_fields = ['id', 'invoice_no']
+
+
+class CreateUpdateSalesInvoiceSerializer(serializers.ModelSerializer):
+    invoice_lines = SalesInvoiceLineWriteSerializer(many=True, required=False)
+
+    class Meta:
+        model = SalesInvoiceCheck
+        fields = [
+            'invoice_no', 'invoice_date', 'status',
+            'company', 'company_gstin', 'company_pan',
+            'company_state', 'company_state_code',
+            'customer',
+            'consignee_name', 'consignee_address', 'consignee_gstin', 'consignee_state', 'consignee_state_code',
+            'buyer_name', 'buyer_address', 'buyer_gstin', 'buyer_state', 'buyer_state_code',
+            'dc_reference', 'so_reference',
+            'buyers_order_no', 'buyers_order_date',
+            'delivery_note', 'delivery_note_date', 'other_references',
+            'dispatch_doc_no', 'dispatch_doc_date', 'dispatched_through',
+            'destination', 'terms_of_delivery', 'payment_terms',
+            'amount_in_words', 'remarks', 'declaration',
+            'invoice_lines',
         ]
         extra_kwargs = {
+            'invoice_no': {'required': False, 'allow_blank': True},
+            'dc_reference': {'required': False, 'allow_null': True},
+            'so_reference': {'required': False, 'allow_null': True},
+            'status': {'required': False},
+            'company_gstin': {'required': False, 'allow_blank': True},
+            'company_pan': {'required': False, 'allow_blank': True},
+            'company_state': {'required': False, 'allow_blank': True},
+            'company_state_code': {'required': False, 'allow_blank': True},
+            'consignee_name': {'required': False, 'allow_blank': True},
+            'consignee_address': {'required': False, 'allow_blank': True},
+            'consignee_gstin': {'required': False, 'allow_blank': True},
+            'consignee_state': {'required': False, 'allow_blank': True},
+            'consignee_state_code': {'required': False, 'allow_blank': True},
+            'buyer_name': {'required': False, 'allow_blank': True},
+            'buyer_address': {'required': False, 'allow_blank': True},
+            'buyer_gstin': {'required': False, 'allow_blank': True},
+            'buyer_state': {'required': False, 'allow_blank': True},
+            'buyer_state_code': {'required': False, 'allow_blank': True},
+            'buyers_order_no': {'required': False, 'allow_blank': True},
+            'buyers_order_date': {'required': False, 'allow_null': True},
+            'delivery_note': {'required': False, 'allow_blank': True},
+            'delivery_note_date': {'required': False, 'allow_null': True},
+            'other_references': {'required': False, 'allow_blank': True},
+            'dispatch_doc_no': {'required': False, 'allow_blank': True},
+            'dispatch_doc_date': {'required': False, 'allow_null': True},
+            'dispatched_through': {'required': False, 'allow_blank': True},
+            'destination': {'required': False, 'allow_blank': True},
+            'terms_of_delivery': {'required': False, 'allow_blank': True},
+            'payment_terms': {'required': False, 'allow_blank': True},
+            'amount_in_words': {'required': False, 'allow_blank': True},
             'remarks': {'required': False, 'allow_blank': True},
-            'accepted_by': {'required': False},
+            'declaration': {'required': False, 'allow_blank': True},
         }
+
+    @transaction.atomic
+    def create(self, validated_data):
+        lines_data = validated_data.pop('invoice_lines', [])
+        # Auto-generate invoice number
+        if not validated_data.get('invoice_no'):
+            from datetime import date
+            prefix = 'INV'
+            today = date.today()
+            date_part = today.strftime('%Y%m%d')
+            count = SalesInvoiceCheck.objects.filter(
+                invoice_no__startswith=f'{prefix}-{date_part}'
+            ).count()
+            validated_data['invoice_no'] = f'{prefix}-{date_part}-{str(count + 1).zfill(4)}'
+
+        invoice = SalesInvoiceCheck.objects.create(**validated_data)
+
+        for i, line_data in enumerate(lines_data, 1):
+            line_data['sl_no'] = line_data.get('sl_no', i)
+            line = SalesInvoiceLine(**line_data, invoice=invoice)
+            line.calculate()
+            line.save()
+
+        invoice.calculate_totals()
+        return invoice
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        lines_data = validated_data.pop('invoice_lines', None)
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        if lines_data is not None:
+            instance.invoice_lines.all().delete()
+            for i, line_data in enumerate(lines_data, 1):
+                line_data['sl_no'] = line_data.get('sl_no', i)
+                line = SalesInvoiceLine(**line_data, invoice=instance)
+                line.calculate()
+                line.save()
+            instance.calculate_totals()
+
+        return instance
 
 
 class OutboundPaymentScheduleSerializer(serializers.ModelSerializer):
@@ -821,6 +974,25 @@ class FreightPaymentSerializer(serializers.ModelSerializer):
         }
 
 
+class FreightPaymentListSerializer(serializers.ModelSerializer):
+    """Full payment serializer with freight details for standalone list view."""
+    created_by_name = serializers.CharField(
+        source='created_by.get_full_name', read_only=True, default=''
+    )
+    advice_no = serializers.CharField(source='freight.advice_no', read_only=True, default='')
+    customer_name = serializers.CharField(source='freight.customer_name', read_only=True, default='')
+    freight_id = serializers.UUIDField(source='freight.id', read_only=True)
+
+    class Meta:
+        model = FreightPayment
+        fields = [
+            'id', 'freight', 'freight_id', 'advice_no', 'customer_name',
+            'payment_date', 'amount_paid', 'payment_mode',
+            'reference_no', 'remarks', 'created_by_name', 'created_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'created_by_name', 'advice_no', 'customer_name', 'freight_id']
+
+
 class FreightAttachmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = FreightAttachment
@@ -839,10 +1011,13 @@ class FreightAdviceOutboundListSerializer(serializers.ModelSerializer):
     class Meta:
         model = FreightAdviceOutbound
         fields = [
-            'id', 'advice_no', 'freight_date', 'customer_name',
+            'id', 'advice_no', 'freight_detail', 'freight_date', 'invoice_date', 'customer_name',
             'transporter', 'transporter_name', 'company_name',
-            'base_amount', 'payable_amount', 'total_paid', 'balance',
-            'status', 'lorry_no', 'destination', 'dc_count', 'created_date',
+            'shipment_quantity', 'lorry_no', 'destination',
+            'base_amount', 'freight_per_ton',
+            'unloading_charges', 'unloading_wages_amount',
+            'payable_amount', 'total_paid', 'balance',
+            'remarks', 'status', 'dc_count', 'created_date',
         ]
         read_only_fields = ['id']
 
@@ -868,9 +1043,8 @@ class FreightAdviceOutboundDetailSerializer(serializers.ModelSerializer):
             'freight_type', 'created_by', 'created_by_name', 'created_date',
             'freight_date', 'invoice_date', 'customer_name', 'lorry_no', 'destination',
             'shipment_quantity', 'quantity_uom',
-            'base_amount', 'discount', 'loading_wages_amount', 'unloading_wages_amount',
-            'freight_per_ton', 'additional_freight', 'unloading_charges',
-            'less_amount', 'tds_less',
+            'base_amount', 'unloading_wages_amount',
+            'freight_per_ton', 'unloading_charges',
             'payable_amount', 'total_paid', 'balance',
             'status', 'remarks',
             'dc_links', 'payments', 'attachments', 'calculated_payable',
@@ -901,14 +1075,15 @@ class CreateUpdateFreightSerializer(serializers.ModelSerializer):
             'advice_no', 'freight_detail', 'dispatch_challan', 'transporter', 'freight_type',
             'freight_date', 'invoice_date', 'customer_name', 'lorry_no', 'destination',
             'shipment_quantity', 'quantity_uom',
-            'base_amount', 'discount', 'loading_wages_amount', 'unloading_wages_amount',
-            'freight_per_ton', 'additional_freight', 'unloading_charges',
-            'less_amount', 'tds_less', 'remarks',
+            'base_amount', 'unloading_wages_amount',
+            'freight_per_ton', 'unloading_charges',
+            'remarks',
             'dc_links',
         ]
         extra_kwargs = {
             'advice_no': {'required': False, 'allow_blank': True},
             'freight_detail': {'required': False, 'allow_null': True},
+            'dispatch_challan': {'required': False, 'allow_null': True},
             'transporter': {'required': False, 'allow_null': True},
             'freight_type': {'required': False, 'allow_blank': True},
             'freight_date': {'required': False, 'allow_null': True},
@@ -918,14 +1093,9 @@ class CreateUpdateFreightSerializer(serializers.ModelSerializer):
             'destination': {'required': False, 'allow_blank': True},
             'shipment_quantity': {'required': False, 'allow_null': True},
             'quantity_uom': {'required': False, 'allow_blank': True},
-            'discount': {'required': False},
-            'loading_wages_amount': {'required': False},
             'unloading_wages_amount': {'required': False},
             'freight_per_ton': {'required': False},
-            'additional_freight': {'required': False},
             'unloading_charges': {'required': False},
-            'less_amount': {'required': False},
-            'tds_less': {'required': False},
             'remarks': {'required': False, 'allow_blank': True},
         }
 
@@ -1002,8 +1172,10 @@ class SalesFreightDetailListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'freight_no', 'freight_date', 'company', 'company_name',
             'factory', 'factory_name', 'customer_name', 'transporter_name',
-            'lorry_no', 'total_quantity', 'total_freight', 'freight_paid',
-            'balance_freight', 'destination', 'status', 'dc_count',
+            'lorry_no', 'freight_type', 'total_quantity', 'freight_per_ton',
+            'discount', 'additional_freight', 'less_amount', 'tds_less',
+            'total_freight', 'freight_paid', 'balance_freight',
+            'destination', 'destination_state', 'remarks', 'status', 'dc_count',
         ]
 
     def get_dc_count(self, obj):
@@ -1024,7 +1196,8 @@ class SalesFreightDetailDetailSerializer(serializers.ModelSerializer):
             'factory', 'factory_name', 'customer', 'customer_name_display',
             'transporter', 'transporter_name', 'freight_type',
             'lorry_no', 'total_quantity', 'quantity_uom',
-            'freight_per_ton', 'total_freight', 'freight_paid', 'balance_freight',
+            'freight_per_ton', 'discount', 'additional_freight', 'less_amount', 'tds_less',
+            'total_freight', 'freight_paid', 'balance_freight',
             'destination', 'destination_state', 'decision_box',
             'remarks', 'status', 'dc_links',
         ]
@@ -1040,6 +1213,7 @@ class CreateUpdateFreightDetailSerializer(serializers.ModelSerializer):
             'id', 'freight_no', 'freight_date', 'company', 'factory', 'customer',
             'transporter', 'freight_type', 'lorry_no',
             'total_quantity', 'quantity_uom', 'freight_per_ton',
+            'discount', 'additional_freight', 'less_amount', 'tds_less',
             'total_freight', 'freight_paid',
             'destination', 'destination_state', 'decision_box',
             'remarks', 'status', 'dc_links',
@@ -1054,6 +1228,10 @@ class CreateUpdateFreightDetailSerializer(serializers.ModelSerializer):
             'total_quantity': {'required': False},
             'quantity_uom': {'required': False, 'allow_blank': True},
             'freight_per_ton': {'required': False},
+            'discount': {'required': False},
+            'additional_freight': {'required': False},
+            'less_amount': {'required': False},
+            'tds_less': {'required': False},
             'total_freight': {'required': False},
             'freight_paid': {'required': False},
             'destination': {'required': False, 'allow_blank': True},
@@ -1132,74 +1310,97 @@ class ReminderDateSerializer(serializers.ModelSerializer):
 
 
 class ReceivableLedgerListSerializer(serializers.ModelSerializer):
-    customer_name = serializers.CharField(source='customer.name', read_only=True)
-    invoice_number = serializers.CharField(
-        source='invoice_reference.invoice_number',
-        read_only=True
+    customer_name = serializers.CharField(source='customer.customer_name', read_only=True, default='')
+    invoice_no = serializers.CharField(source='invoice_reference.invoice_no', read_only=True, default='')
+    invoice_grand_total = serializers.DecimalField(
+        source='invoice_reference.grand_total', read_only=True, default=0, max_digits=18, decimal_places=2
     )
-    is_overdue = serializers.SerializerMethodField()
 
     class Meta:
         model = ReceivableLedger
         fields = [
-            'id',
-            'customer',
-            'customer_name',
-            'invoice_number',
-            'invoice_date',
-            'due_date',
-            'amount',
-            'amount_paid',
-            'balance',
-            'payment_status',
-            'escalation_flag',
-            'is_overdue',
+            'id', 'customer', 'customer_name',
+            'invoice_reference', 'invoice_no', 'invoice_grand_total',
+            'invoice_date', 'due_date',
+            'amount', 'amount_paid', 'balance',
+            'payment_status', 'escalation_flag', 'notes',
         ]
         read_only_fields = ['id']
-        extra_kwargs = {
-            'amount_paid': {'required': False},
-            'balance': {'required': False},
-            'payment_status': {'required': False, 'allow_blank': True},
-        }
-
-    def get_is_overdue(self, obj):
-        return obj.is_overdue()
 
 
 class ReceivableLedgerDetailSerializer(serializers.ModelSerializer):
-    customer_name = serializers.CharField(source='customer.name', read_only=True)
-    invoice_number = serializers.CharField(
-        source='invoice_reference.invoice_number',
-        read_only=True
+    customer_name = serializers.CharField(source='customer.customer_name', read_only=True, default='')
+    invoice_no = serializers.CharField(source='invoice_reference.invoice_no', read_only=True, default='')
+    invoice_grand_total = serializers.DecimalField(
+        source='invoice_reference.grand_total', read_only=True, default=0, max_digits=18, decimal_places=2
     )
     reminders = ReminderDateSerializer(many=True, read_only=True)
-    is_overdue = serializers.SerializerMethodField()
 
     class Meta:
         model = ReceivableLedger
         fields = [
-            'id',
-            'customer',
-            'customer_name',
-            'invoice_reference',
-            'invoice_number',
-            'invoice_date',
-            'due_date',
-            'amount',
-            'amount_paid',
-            'balance',
-            'payment_status',
-            'escalation_flag',
-            'notes',
-            'reminders',
-            'is_overdue',
+            'id', 'customer', 'customer_name',
+            'invoice_reference', 'invoice_no', 'invoice_grand_total',
+            'invoice_date', 'due_date',
+            'amount', 'amount_paid', 'balance',
+            'payment_status', 'escalation_flag', 'notes',
+            'reminders', 'created_at',
         ]
-        read_only_fields = ['id', 'payment_status']
+        read_only_fields = ['id']
+
+
+class CreateUpdateReceivableSerializer(serializers.ModelSerializer):
+    """Create/Update receivable with auto-calculation of balance and status."""
+
+    class Meta:
+        model = ReceivableLedger
+        fields = [
+            'invoice_reference', 'customer', 'invoice_date', 'due_date',
+            'amount', 'amount_paid', 'notes',
+        ]
         extra_kwargs = {
             'amount_paid': {'required': False},
-            'balance': {'required': False},
             'notes': {'required': False, 'allow_blank': True},
+            'invoice_date': {'required': False, 'allow_null': True},
+            'due_date': {'required': False, 'allow_null': True},
         }
 
-    def get_is_overdue(self, obj):
-        return obj.is_overdue()
+    def create(self, validated_data):
+        amount = validated_data.get('amount') or Decimal('0')
+        paid = validated_data.get('amount_paid') or Decimal('0')
+        validated_data['balance'] = max(Decimal('0'), amount - paid)
+        if paid >= amount and amount > 0:
+            validated_data['payment_status'] = 'PAID'
+        elif paid > 0:
+            validated_data['payment_status'] = 'PARTIALLY_PAID'
+        else:
+            validated_data['payment_status'] = 'NOT_DUE'
+        receivable = ReceivableLedger.objects.create(**validated_data)
+        # If fully paid, close the linked invoice
+        if receivable.payment_status == 'PAID' and receivable.invoice_reference:
+            inv = receivable.invoice_reference
+            if inv.status != 'CANCELLED':
+                inv.status = 'CONFIRMED'
+                inv.save(update_fields=['status', 'updated_at'])
+        return receivable
+
+    def update(self, instance, validated_data):
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        amount = instance.amount or Decimal('0')
+        paid = instance.amount_paid or Decimal('0')
+        instance.balance = max(Decimal('0'), amount - paid)
+        if paid >= amount and amount > 0:
+            instance.payment_status = 'PAID'
+        elif paid > 0:
+            instance.payment_status = 'PARTIALLY_PAID'
+        else:
+            instance.payment_status = 'NOT_DUE'
+        instance.save()
+        # If fully paid, close the linked invoice
+        if instance.payment_status == 'PAID' and instance.invoice_reference:
+            inv = instance.invoice_reference
+            if inv.status != 'CANCELLED':
+                inv.status = 'CONFIRMED'
+                inv.save(update_fields=['status', 'updated_at'])
+        return instance

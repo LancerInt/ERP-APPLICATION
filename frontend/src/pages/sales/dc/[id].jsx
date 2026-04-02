@@ -215,9 +215,6 @@ export default function DispatchChallanDetail() {
                 <InfoField label="Transporter">{dc.transporter_name || '-'}</InfoField>
                 <InfoField label="Lorry / Vehicle No">{dc.lorry_no || '-'}</InfoField>
                 <InfoField label="Driver Contact">{dc.driver_contact || '-'}</InfoField>
-                <InfoField label="Freight Rate Type">{dc.freight_rate_type || '-'}</InfoField>
-                <InfoField label="Freight Rate">{dc.freight_rate_value ? fmt(dc.freight_rate_value) : '-'}</InfoField>
-                <InfoField label="Total Freight">{dc.freight_amount_total ? fmt(dc.freight_amount_total) : '-'}</InfoField>
               </div>
             </div>
 

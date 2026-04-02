@@ -209,15 +209,26 @@ tbody tr:hover {
 
 /* Scrollbar Styles */
 ::-webkit-scrollbar {
-  @apply w-2 h-2;
+  width: 4px;
+  height: 4px;
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-neutral-100;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-neutral-400 rounded hover:bg-neutral-500;
+  background: #cbd5e1;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
 }
 
 /* Print Styles */

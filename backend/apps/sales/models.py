@@ -583,74 +583,177 @@ class DeliveryLocation(BaseModel):
 
 class SalesInvoiceCheck(BaseModel):
     """
-    Statutory invoice verification and reconciliation.
-    Compares uploaded invoice against SO totals.
+    GST Sales Invoice matching the standard Indian tax invoice format.
     """
 
-    VARIANCE_FLAG_CHOICES = [
-        ('WITHIN_TOLERANCE', 'Within Tolerance'),
-        ('REQUIRES_REVIEW', 'Requires Review'),
+    STATUS_CHOICES = [
+        ('DRAFT', 'Draft'),
+        ('CONFIRMED', 'Confirmed'),
+        ('CANCELLED', 'Cancelled'),
     ]
 
-    invoice_check_id = models.CharField(
-        max_length=50,
-        unique=True,
-        db_index=True,
-        help_text="Auto-generated invoice check identifier"
+    PAYMENT_TERMS_CHOICES = [
+        ('IMMEDIATE', 'Immediate'),
+        ('NET15', 'Net 15 Days'),
+        ('NET30', 'Net 30 Days'),
+        ('NET45', 'Net 45 Days'),
+        ('NET60', 'Net 60 Days'),
+        ('CUSTOM', 'Custom'),
+    ]
+
+    # Auto-generated
+    invoice_no = models.CharField(max_length=50, unique=True, db_index=True, default='')
+    invoice_date = models.DateField(db_index=True, null=True, blank=True)
+
+    # Company / Seller info
+    company = models.ForeignKey(
+        'core.Company', on_delete=models.PROTECT, related_name='sales_invoices',
+        null=True, blank=True
     )
+    company_gstin = models.CharField(max_length=20, blank=True, default='')
+    company_pan = models.CharField(max_length=20, blank=True, default='')
+    company_state = models.CharField(max_length=100, blank=True, default='')
+    company_state_code = models.CharField(max_length=10, blank=True, default='')
+
+    # Customer / Buyer info
+    customer = models.ForeignKey(
+        'master.Customer', on_delete=models.PROTECT, related_name='sales_invoices',
+        null=True, blank=True
+    )
+
+    # Consignee (Ship to) - can differ from buyer
+    consignee_name = models.CharField(max_length=255, blank=True, default='')
+    consignee_address = models.TextField(blank=True, default='')
+    consignee_gstin = models.CharField(max_length=20, blank=True, default='')
+    consignee_state = models.CharField(max_length=100, blank=True, default='')
+    consignee_state_code = models.CharField(max_length=10, blank=True, default='')
+
+    # Buyer (Bill to)
+    buyer_name = models.CharField(max_length=255, blank=True, default='')
+    buyer_address = models.TextField(blank=True, default='')
+    buyer_gstin = models.CharField(max_length=20, blank=True, default='')
+    buyer_state = models.CharField(max_length=100, blank=True, default='')
+    buyer_state_code = models.CharField(max_length=10, blank=True, default='')
+
+    # References
     dc_reference = models.ForeignKey(
-        DispatchChallan,
-        on_delete=models.PROTECT,
+        DispatchChallan, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='invoice_checks'
     )
-    statutory_invoice_upload = models.FileField(upload_to='invoices/%Y/%m/%d/')
-    invoice_number = models.CharField(max_length=100, db_index=True, blank=True, default='')
-    invoice_date = models.DateField(null=True, blank=True)
-    total_value_upload = models.DecimalField(
-        max_digits=18,
-        decimal_places=2,
-        validators=[MinValueValidator(0)]
+    so_reference = models.ForeignKey(
+        SalesOrder, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='sales_invoices'
     )
-    total_value_so = models.DecimalField(
-        max_digits=18,
-        decimal_places=2,
-        validators=[MinValueValidator(0)]
+    buyers_order_no = models.CharField(max_length=100, blank=True, default='')
+    buyers_order_date = models.DateField(null=True, blank=True)
+    delivery_note = models.CharField(max_length=255, blank=True, default='')
+    delivery_note_date = models.DateField(null=True, blank=True)
+    other_references = models.CharField(max_length=255, blank=True, default='')
+
+    # Dispatch info
+    dispatch_doc_no = models.CharField(max_length=100, blank=True, default='')
+    dispatch_doc_date = models.DateField(null=True, blank=True)
+    dispatched_through = models.CharField(max_length=255, blank=True, default='')
+    destination = models.CharField(max_length=255, blank=True, default='')
+    terms_of_delivery = models.CharField(max_length=255, blank=True, default='')
+    payment_terms = models.CharField(
+        max_length=20, choices=PAYMENT_TERMS_CHOICES, default='NET30', blank=True
     )
-    variance_amount = models.DecimalField(
-        max_digits=18,
-        decimal_places=2,
-        validators=[MinValueValidator(0)]
-    )
-    variance_flag = models.CharField(
-        max_length=20,
-        choices=VARIANCE_FLAG_CHOICES,
-        db_index=True
-    )
+
+    # Totals
+    subtotal = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    cgst_total = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    sgst_total = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    igst_total = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    round_off = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    grand_total = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    amount_in_words = models.CharField(max_length=500, blank=True, default='')
+
+    # Status
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='DRAFT', db_index=True)
     remarks = models.TextField(blank=True, default='')
-    acceptance_timestamp = models.DateTimeField(null=True, blank=True)
-    accepted_by = models.ForeignKey(
-        'core.StakeholderUser',
-        on_delete=models.SET_NULL,
-        null=True,
+    declaration = models.TextField(
         blank=True,
-        related_name='accepted_invoices'
+        default='We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.'
     )
 
     class Meta:
         ordering = ['-invoice_date']
+        db_table = 'sales_invoice'
         indexes = [
-            models.Index(fields=['dc_reference', '-invoice_date']),
-            models.Index(fields=['variance_flag', '-created_at']),
+            models.Index(fields=['customer', '-invoice_date']),
+            models.Index(fields=['status', '-invoice_date']),
         ]
 
     def __str__(self):
-        return f"Invoice-{self.invoice_number}"
+        return f"Invoice-{self.invoice_no}"
 
-    def accept(self, accepted_by: 'User'):
-        """Accept invoice and mark timestamp"""
-        self.acceptance_timestamp = timezone.now()
-        self.accepted_by = accepted_by
-        self.save(update_fields=['acceptance_timestamp', 'accepted_by', 'updated_at'])
+    def calculate_totals(self):
+        """Recalculate all totals from line items."""
+        lines = self.invoice_lines.all()
+        self.subtotal = sum(l.amount for l in lines)
+        self.cgst_total = sum(l.cgst_amount for l in lines)
+        self.sgst_total = sum(l.sgst_amount for l in lines)
+        self.igst_total = sum(l.igst_amount for l in lines)
+        tax_total = self.cgst_total + self.sgst_total + self.igst_total
+        raw_total = self.subtotal + tax_total
+        self.grand_total = round(raw_total)
+        self.round_off = self.grand_total - raw_total
+        self.save(update_fields=[
+            'subtotal', 'cgst_total', 'sgst_total', 'igst_total',
+            'round_off', 'grand_total', 'updated_at',
+        ])
+
+
+class SalesInvoiceLine(BaseModel):
+    """Individual line item on a GST Sales Invoice."""
+    invoice = models.ForeignKey(
+        SalesInvoiceCheck, on_delete=models.CASCADE, related_name='invoice_lines'
+    )
+    sl_no = models.PositiveIntegerField(default=1)
+    product = models.ForeignKey(
+        'master.Product', on_delete=models.PROTECT, related_name='invoice_lines',
+        null=True, blank=True
+    )
+    description = models.CharField(max_length=500)
+    hsn_sac = models.CharField(max_length=20, blank=True, default='')
+    quantity = models.DecimalField(max_digits=15, decimal_places=4, default=0)
+    uom = models.CharField(max_length=20, blank=True, default='')
+    rate = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    discount_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    amount = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+
+    # GST
+    gst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=18)
+    cgst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    cgst_amount = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    sgst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    sgst_amount = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    igst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    igst_amount = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+
+    class Meta:
+        ordering = ['sl_no']
+
+    def __str__(self):
+        return f"{self.invoice.invoice_no} - Line {self.sl_no}"
+
+    def calculate(self):
+        """Calculate amount and GST from rate/qty/discount."""
+        base = self.quantity * self.rate
+        disc = base * (self.discount_percent / Decimal('100'))
+        self.amount = base - disc
+        half_rate = self.gst_rate / Decimal('2')
+        if self.igst_rate > 0:
+            self.igst_amount = self.amount * self.igst_rate / Decimal('100')
+            self.cgst_amount = Decimal('0')
+            self.sgst_amount = Decimal('0')
+        else:
+            self.cgst_rate = half_rate
+            self.sgst_rate = half_rate
+            self.cgst_amount = self.amount * self.cgst_rate / Decimal('100')
+            self.sgst_amount = self.amount * self.sgst_rate / Decimal('100')
+            self.igst_amount = Decimal('0')
 
 
 class SalesFreightDetail(BaseModel):
@@ -700,6 +803,18 @@ class SalesFreightDetail(BaseModel):
     )
     quantity_uom = models.CharField(max_length=20, blank=True, default='MTS')
     freight_per_ton = models.DecimalField(
+        max_digits=18, decimal_places=2, default=0, validators=[MinValueValidator(0)]
+    )
+    discount = models.DecimalField(
+        max_digits=18, decimal_places=2, default=0, validators=[MinValueValidator(0)]
+    )
+    additional_freight = models.DecimalField(
+        max_digits=18, decimal_places=2, default=0, validators=[MinValueValidator(0)]
+    )
+    less_amount = models.DecimalField(
+        max_digits=18, decimal_places=2, default=0, validators=[MinValueValidator(0)]
+    )
+    tds_less = models.DecimalField(
         max_digits=18, decimal_places=2, default=0, validators=[MinValueValidator(0)]
     )
     total_freight = models.DecimalField(
@@ -802,7 +917,9 @@ class FreightAdviceOutbound(BaseModel):
     )
     dispatch_challan = models.ForeignKey(
         DispatchChallan,
-        on_delete=models.PROTECT,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name='freight_advices'
     )
     transporter = models.ForeignKey(
@@ -824,18 +941,6 @@ class FreightAdviceOutbound(BaseModel):
     base_amount = models.DecimalField(
         max_digits=18,
         decimal_places=2,
-        validators=[MinValueValidator(0)]
-    )
-    discount = models.DecimalField(
-        max_digits=18,
-        decimal_places=2,
-        default=0,
-        validators=[MinValueValidator(0)]
-    )
-    loading_wages_amount = models.DecimalField(
-        max_digits=18,
-        decimal_places=2,
-        default=0,
         validators=[MinValueValidator(0)]
     )
     unloading_wages_amount = models.DecimalField(
@@ -869,16 +974,7 @@ class FreightAdviceOutbound(BaseModel):
     freight_per_ton = models.DecimalField(
         max_digits=18, decimal_places=2, default=0, validators=[MinValueValidator(0)]
     )
-    additional_freight = models.DecimalField(
-        max_digits=18, decimal_places=2, default=0, validators=[MinValueValidator(0)]
-    )
     unloading_charges = models.DecimalField(
-        max_digits=18, decimal_places=2, default=0, validators=[MinValueValidator(0)]
-    )
-    less_amount = models.DecimalField(
-        max_digits=18, decimal_places=2, default=0, validators=[MinValueValidator(0)]
-    )
-    tds_less = models.DecimalField(
         max_digits=18, decimal_places=2, default=0, validators=[MinValueValidator(0)]
     )
     # Freight info
@@ -913,16 +1009,11 @@ class FreightAdviceOutbound(BaseModel):
         return f"Freight-{self.advice_no}"
 
     def calculate_payable(self) -> Decimal:
-        """Calculate total payable: base - discount + loads + additional - less - tds"""
+        """Calculate total payable: base + loads + unloading"""
         return (
             self.base_amount
-            - self.discount
-            + self.loading_wages_amount
             + self.unloading_wages_amount
-            + self.additional_freight
             + self.unloading_charges
-            - self.less_amount
-            - self.tds_less
         )
 
     def get_total_paid(self) -> Decimal:
@@ -1134,7 +1225,7 @@ class ReceivableLedger(BaseModel):
         unique_together = [['invoice_reference', 'customer']]
 
     def __str__(self):
-        return f"AR: {self.customer} - {self.invoice_reference.invoice_number}"
+        return f"AR: {self.customer} - {self.invoice_reference.invoice_no}"
 
     def record_payment(self, amount: Decimal):
         """Record payment received"""

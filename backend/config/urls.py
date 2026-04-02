@@ -11,7 +11,7 @@ from config.views import signup_view
 from core.views import CompanyViewSet, WarehouseViewSet, GodownViewSet, MachineryViewSet, RoleDefinitionViewSet, StakeholderUserViewSet
 from master.views import ProductViewSet, ServiceCatalogueViewSet, VendorViewSet, CustomerViewSet, TransporterViewSet, PriceListViewSet, TaxMasterViewSet, TemplateLibraryViewSet
 from purchase.views import PurchaseRequestViewSet, RFQHeaderViewSet, QuoteResponseViewSet, QuoteEvaluationViewSet, PurchaseOrderViewSet, ReceiptAdviceViewSet, VendorPaymentAdviceViewSet, FreightAdviceInboundViewSet, QuoteUploadView, DocumentExtractorView, EvaluationDashboardView, EvaluationDashboardSubmitView, VendorBillViewSet, PaymentMadeViewSet, VendorCreditViewSet, PurchaseLifecycleGraphView, PurchaseAttachmentViewSet
-from sales.views import CustomerPOUploadViewSet, SalesOrderViewSet, DispatchChallanViewSet, SalesInvoiceCheckViewSet, SalesFreightDetailViewSet, FreightAdviceOutboundViewSet, ReceivableLedgerViewSet
+from sales.views import CustomerPOUploadViewSet, SalesOrderViewSet, DispatchChallanViewSet, SalesInvoiceCheckViewSet, SalesFreightDetailViewSet, FreightAdviceOutboundViewSet, FreightPaymentViewSet, ReceivableLedgerViewSet
 from production.views import BOMRequestViewSet, WorkOrderViewSet, WageVoucherViewSet, MaterialIssueViewSet, ProductionYieldLogViewSet
 from quality.views import QCParameterLibraryViewSet, QCRequestViewSet, QCLabJobViewSet, QCFinalReportViewSet, CounterSampleRegisterViewSet
 from inventory.views import InventoryLedgerViewSet, StockTransferDCViewSet, StockTransferReceiptViewSet, WarehouseShiftingViewSet, JobWorkOrderViewSet, JobWorkDCViewSet, JobWorkReceiptViewSet, SalesReturnAdviceViewSet, StockAdjustmentViewSet
@@ -62,6 +62,7 @@ router.register(r'sales/dc', DispatchChallanViewSet, basename='dispatch-challan'
 router.register(r'sales/invoices', SalesInvoiceCheckViewSet, basename='sales-invoice')
 router.register(r'sales/freight-details', SalesFreightDetailViewSet, basename='freight-detail')
 router.register(r'sales/freight', FreightAdviceOutboundViewSet, basename='sales-freight')
+router.register(r'sales/freight-payments', FreightPaymentViewSet, basename='freight-payment')
 router.register(r'sales/receivables', ReceivableLedgerViewSet, basename='receivable')
 
 # Production
