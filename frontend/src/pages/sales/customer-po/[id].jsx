@@ -13,10 +13,18 @@ export default function CustomerPODetail() {
   const { canEdit, canDelete } = usePermissions();
   const [po, setPO] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [priceListLines, setPriceListLines] = useState([]);
 
   useEffect(() => {
-    apiClient.get(`/api/sales/customer-po/${id}/`).then(r => setPO(r.data))
-      .catch(() => toast.error('Failed to load')).finally(() => setIsLoading(false));
+    apiClient.get(`/api/sales/customer-po/${id}/`).then(r => {
+      setPO(r.data);
+      // Fetch price list lines for rate comparison
+      if (r.data.price_list) {
+        apiClient.get(`/api/price-lists/${r.data.price_list}/lines/`)
+          .then(r2 => setPriceListLines(r2.data?.results || r2.data || []))
+          .catch(() => {});
+      }
+    }).catch(() => toast.error('Failed to load')).finally(() => setIsLoading(false));
   }, [id]);
 
   const handleDelete = async () => {
@@ -101,7 +109,7 @@ export default function CustomerPODetail() {
                 <Info label="Company">{po.company_name || '-'}</Info>
                 <Info label="Customer">{po.customer_name || '-'}</Info>
                 <Info label="Warehouse">{po.warehouse_name || '-'}</Info>
-                <Info label="Delivery Type">{termLabel(po.delivery_type)}</Info>
+                <Info label="Delivery Terms">{termLabel(po.delivery_type)}</Info>
                 <Info label="Party Code">{po.party_code || '-'}</Info>
               </div>
             </div>
@@ -131,27 +139,52 @@ export default function CustomerPODetail() {
               </div>
             </div>
 
-            {/* Consignee & Billing */}
-            {(po.consignee_name || po.consignee_address || po.consignee_gstin) && (
-              <div className="bg-white rounded-lg border border-slate-200 p-6">
-                <h2 className="text-lg font-semibold text-slate-900 mb-5 pb-2 border-b">Consignee & Billing</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
-                    <h4 className="text-sm font-semibold text-blue-800 mb-2">Consignee (Ship To)</h4>
-                    <p className="text-sm font-medium">{po.consignee_name || '-'}</p>
-                    {po.consignee_address && <p className="text-sm text-slate-600 mt-1 whitespace-pre-wrap">{po.consignee_address}</p>}
-                    {po.consignee_gstin && <p className="text-xs text-slate-500 mt-1">GSTIN: {po.consignee_gstin}</p>}
-                  </div>
-                  {(po.billing_address || po.billing_gstin) && (
-                    <div className="p-4 bg-green-50 rounded-lg border border-green-100">
-                      <h4 className="text-sm font-semibold text-green-800 mb-2">Billing Address</h4>
-                      {po.billing_address && <p className="text-sm text-slate-600 whitespace-pre-wrap">{po.billing_address}</p>}
-                      {po.billing_gstin && <p className="text-xs text-slate-500 mt-1">GSTIN: {po.billing_gstin}</p>}
+            {/* Shipping & Billing Addresses */}
+            {(po.consignee_name || po.consignee_address || po.billing_address) && (() => {
+              const shipNames = (po.consignee_name || '').split(' | ').filter(Boolean);
+              const shipAddrs = (po.consignee_address || '').split(' | ').filter(Boolean);
+              const shipGstins = (po.consignee_gstin || '').split(' | ').filter(Boolean);
+              const maxShip = Math.max(shipNames.length, shipAddrs.length, shipGstins.length);
+              const billAddrs = (po.billing_address || '').split(' | ').filter(Boolean);
+              const billGstins = (po.billing_gstin || '').split(' | ').filter(Boolean);
+              const maxBill = Math.max(billAddrs.length, billGstins.length);
+              return (
+                <div className="bg-white rounded-lg border border-slate-200 p-6">
+                  <h2 className="text-lg font-semibold text-slate-900 mb-5 pb-2 border-b">Shipping & Billing Addresses</h2>
+                  {maxShip > 0 && (
+                    <div className="mb-4">
+                      <h3 className="text-sm font-semibold text-blue-800 mb-3">Shipping Addresses ({maxShip})</h3>
+                      <div className="space-y-3">
+                        {Array.from({ length: maxShip }, (_, i) => (
+                          <div key={i} className="p-3 bg-blue-50 rounded-lg border border-blue-100">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-xs font-semibold text-blue-600">#{i + 1}</span>
+                              {shipNames[i] && <span className="text-sm font-medium text-slate-900">{shipNames[i]}</span>}
+                            </div>
+                            {shipAddrs[i] && <p className="text-sm text-slate-600">{shipAddrs[i]}</p>}
+                            {shipGstins[i] && <p className="text-xs text-slate-500 mt-0.5">GSTIN: {shipGstins[i]}</p>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {maxBill > 0 && (
+                    <div>
+                      <h3 className="text-sm font-semibold text-green-800 mb-3">Billing Addresses ({maxBill})</h3>
+                      <div className="space-y-3">
+                        {Array.from({ length: maxBill }, (_, i) => (
+                          <div key={i} className="p-3 bg-green-50 rounded-lg border border-green-100">
+                            <span className="text-xs font-semibold text-green-600">#{i + 1}</span>
+                            {billAddrs[i] && <p className="text-sm text-slate-600 mt-1">{billAddrs[i]}</p>}
+                            {billGstins[i] && <p className="text-xs text-slate-500 mt-0.5">GSTIN: {billGstins[i]}</p>}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Product Lines */}
             <div className="bg-white rounded-lg border border-slate-200 p-6">
@@ -222,6 +255,55 @@ export default function CustomerPODetail() {
                 </div>
               )}
             </div>
+
+            {/* PO Rate Comparison */}
+            {priceListLines.length > 0 && lines.length > 0 && (
+              <div className="bg-white rounded-lg border border-slate-200 p-6">
+                <h2 className="text-lg font-semibold text-slate-900 mb-5 pb-2 border-b">PO Rate vs Price List Comparison</h2>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead><tr className="border-b bg-slate-50">
+                      <th className="text-left py-2 px-3 text-xs text-slate-500 uppercase">#</th>
+                      <th className="text-left py-2 px-3 text-xs text-slate-500 uppercase">Product</th>
+                      <th className="text-right py-2 px-3 text-xs text-slate-500 uppercase">Qty</th>
+                      <th className="text-right py-2 px-3 text-xs text-amber-600 uppercase">PO Rate</th>
+                      <th className="text-right py-2 px-3 text-xs text-blue-600 uppercase">Price List Rate</th>
+                      <th className="text-right py-2 px-3 text-xs text-slate-500 uppercase">Difference</th>
+                      <th className="text-center py-2 px-3 text-xs text-slate-500 uppercase">Status</th>
+                    </tr></thead>
+                    <tbody>{lines.map((l, i) => {
+                      const plLine = priceListLines.find(pl => pl.product === l.parsed_sku);
+                      const poRate = Number(l.price) || 0;
+                      const plRate = plLine ? (Number(plLine.rate) || 0) : null;
+                      const diff = plRate !== null ? poRate - plRate : null;
+                      const isMatch = diff !== null && Math.abs(diff) <= 0.01;
+                      const isMismatch = diff !== null && Math.abs(diff) > 0.01;
+                      return (
+                        <tr key={i} className={`border-b ${isMismatch ? 'bg-red-50' : isMatch ? 'bg-green-50' : ''}`}>
+                          <td className="py-2 px-3 text-slate-500">{i + 1}</td>
+                          <td className="py-2 px-3 font-medium">{l.product_name || '-'}</td>
+                          <td className="py-2 px-3 text-right">{fmtQty(l.quantity)}</td>
+                          <td className="py-2 px-3 text-right font-semibold text-amber-700">{fmt(poRate)}</td>
+                          <td className="py-2 px-3 text-right font-semibold text-blue-700">{plRate !== null ? fmt(plRate) : <span className="text-slate-400">Not in list</span>}</td>
+                          <td className="py-2 px-3 text-right">
+                            {diff !== null ? (
+                              <span className={`font-medium ${diff > 0 ? 'text-red-600' : diff < 0 ? 'text-green-600' : 'text-slate-400'}`}>
+                                {diff > 0 ? '+' : ''}{fmt(diff)}
+                              </span>
+                            ) : '-'}
+                          </td>
+                          <td className="py-2 px-3 text-center">
+                            {isMatch && <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-green-100 text-green-700">Match</span>}
+                            {isMismatch && <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-red-100 text-red-700">Mismatch</span>}
+                            {!isMatch && !isMismatch && <span className="text-slate-400 text-xs">-</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}</tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
             {/* Special Instructions & Remarks */}
             {(po.special_instructions || po.remarks) && (

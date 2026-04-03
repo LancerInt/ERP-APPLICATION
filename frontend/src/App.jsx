@@ -40,6 +40,7 @@ import VendorEdit from './pages/masters/vendor/edit.jsx';
 import CustomerNew from './pages/masters/customer/new.jsx';
 import TransporterNew from './pages/masters/transporter/new.jsx';
 import PriceListNew from './pages/masters/price-list/new.jsx';
+import PriceListEdit from './pages/masters/price-list/[id].jsx';
 import TaxNew from './pages/masters/tax/new.jsx';
 import TemplateNew from './pages/masters/templates/new.jsx';
 import ServiceCatalogueNew from './pages/masters/service-catalogue/new.jsx';
@@ -252,6 +253,7 @@ function App() {
           <Route path="/masters/transporter/new" element={<ProtectedRoute module="Transporter" action="create"><TransporterNew /></ProtectedRoute>} />
           <Route path="/masters/price-list" element={<ProtectedRoute module="Price List"><PriceListPage /></ProtectedRoute>} />
           <Route path="/masters/price-list/new" element={<ProtectedRoute module="Price List" action="create"><PriceListNew /></ProtectedRoute>} />
+          <Route path="/masters/price-list/:id" element={<ProtectedRoute module="Price List"><PriceListEdit /></ProtectedRoute>} />
           <Route path="/masters/tax" element={<ProtectedRoute module="Tax Master"><TaxMasterList /></ProtectedRoute>} />
           <Route path="/masters/tax/new" element={<ProtectedRoute module="Tax Master" action="create"><TaxNew /></ProtectedRoute>} />
           <Route path="/masters/templates" element={<ProtectedRoute module="Template"><TemplateList /></ProtectedRoute>} />

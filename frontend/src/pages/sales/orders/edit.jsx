@@ -86,7 +86,7 @@ export default function EditSalesOrder() {
           remarks: l.remarks || '',
           line_no: l.line_no,
         }));
-        setSoLines(lines.length > 0 ? lines : [{ product_category: '', product: '', quantity_ordered: '', uom: 'KG', unit_price: '', discount: '0', gst: '0', delivery_schedule_date: '', remarks: '' }]);
+        setSoLines(lines.length > 0 ? lines : [{ product_category: 'FINISHED_GOOD', product: '', quantity_ordered: '', uom: 'KG', unit_price: '', discount: '0', gst: '0', delivery_schedule_date: '', remarks: '' }]);
 
         // Load customers and price lists for the company/customer
         if (so.company) {
@@ -205,7 +205,7 @@ export default function EditSalesOrder() {
     }));
   };
 
-  const addLine = () => setSoLines(prev => [...prev, { product_category: '', product: '', quantity_ordered: '', uom: 'KG', unit_price: '', discount: '0', gst: '0', delivery_schedule_date: '', remarks: '' }]);
+  const addLine = () => setSoLines(prev => [...prev, { product_category: 'FINISHED_GOOD', product: '', quantity_ordered: '', uom: 'KG', unit_price: '', discount: '0', gst: '0', delivery_schedule_date: '', remarks: '' }]);
   const removeLine = (index) => { if (soLines.length > 1) setSoLines(prev => prev.filter((_, i) => i !== index)); };
 
   const grandTotal = soLines.reduce((s, l) => s + calcLineTotal(l), 0);

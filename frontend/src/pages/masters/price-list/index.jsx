@@ -5,13 +5,15 @@ import PageHeader from '../../../components/common/PageHeader';
 import FilterPanel from '../../../components/common/FilterPanel';
 import DataTable from '../../../components/common/DataTable';
 import StatusBadge from '../../../components/common/StatusBadge';
-import { Pencil } from 'lucide-react';
+import { Pencil, Trash2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import useApiData from '../../../hooks/useApiData.js';
 import usePermissions from '../../../hooks/usePermissions.js';
+import apiClient from '../../../utils/api.js';
 
 export default function PriceListPage() {
   const navigate = useNavigate();
-  const { canCreate } = usePermissions();
+  const { canCreate, canDelete } = usePermissions();
   const [showFilters, setShowFilters] = useState(false);
   const [filterValues, setFilterValues] = useState({});
 
@@ -57,18 +59,40 @@ export default function PriceListPage() {
       label: '',
       sortable: false,
       render: (_, row) => (
-        <button
-          onClick={(e) => { e.stopPropagation(); navigate(`/masters/price-list/${row.id}`); }}
-          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
-          title="Edit"
-        >
-          <Pencil size={15} />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={(e) => { e.stopPropagation(); navigate(`/masters/price-list/${row.id}`); }}
+            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
+            title="Edit"
+          >
+            <Pencil size={15} />
+          </button>
+          {canDelete('Price List') && (
+            <button
+              onClick={(e) => { e.stopPropagation(); handleDelete(row.id, row.price_list_id); }}
+              className="p-1.5 text-red-500 hover:bg-red-50 rounded transition"
+              title="Delete"
+            >
+              <Trash2 size={15} />
+            </button>
+          )}
+        </div>
       ),
     },
   ];
 
   const { data, isLoading, error, refetch } = useApiData('/api/price-lists/');
+
+  const handleDelete = async (id, name) => {
+    if (!window.confirm(`Delete price list "${name}"? This cannot be undone.`)) return;
+    try {
+      await apiClient.delete(`/api/price-lists/${id}/`);
+      toast.success(`Price list "${name}" deleted`);
+      refetch();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to delete');
+    }
+  };
 
   const filteredData = data.filter((row) => {
     if (filterValues.search) {

@@ -24,7 +24,7 @@ const GOODS_SUB_TYPE_OPTIONS = [
 ];
 
 const emptySOLine = {
-  product_category: '',
+  product_category: 'FINISHED_GOOD',
   product: '',
   quantity_ordered: '',
   uom: 'KG',
@@ -44,8 +44,6 @@ export default function CreateSalesOrder() {
 
   // Cascading dropdown states
   const [filteredCustomers, setFilteredCustomers] = useState([]);
-  const [filteredPriceLists, setFilteredPriceLists] = useState([]);
-  const [priceLines, setPriceLines] = useState([]);
 
   // Customer PO states
   const [availablePOs, setAvailablePOs] = useState([]);
@@ -64,6 +62,19 @@ export default function CreateSalesOrder() {
     currency: 'INR',
     required_ship_date: '',
     destination: '',
+    delivery_terms: '',
+    party_code: '',
+    delivery_due_date: '',
+    indent_no: '',
+    indent_date: '',
+    dispatched_through: '',
+    delivery_location: '',
+    consignee_name: '',
+    consignee_address: '',
+    consignee_gstin: '',
+    billing_address: '',
+    billing_gstin: '',
+    special_instructions: '',
     remarks: '',
   });
   const [soLines, setSoLines] = useState([{ ...emptySOLine }]);
@@ -87,9 +98,7 @@ export default function CreateSalesOrder() {
   useEffect(() => {
     if (!formData.company) {
       setFilteredCustomers([]);
-      setFormData(prev => ({ ...prev, customer: '', price_list: '', warehouse: '' }));
-      setFilteredPriceLists([]);
-      setPriceLines([]);
+      setFormData(prev => ({ ...prev, customer: '', warehouse: '' }));
       return;
     }
     apiClient.get(`/api/customers/?company=${formData.company}`)
@@ -98,28 +107,16 @@ export default function CreateSalesOrder() {
         setFilteredCustomers(list.map(c => ({ value: c.id, label: c.customer_name || c.name || c.customer_code || c.id })));
       })
       .catch(() => setFilteredCustomers([]));
-    setFormData(prev => ({ ...prev, customer: '', price_list: '' }));
-    setFilteredPriceLists([]);
-    setPriceLines([]);
+    setFormData(prev => ({ ...prev, customer: '' }));
   }, [formData.company]);
 
-  // 2. Customer changed → fetch price lists + available POs
+  // 2. Customer changed → fetch available POs
   useEffect(() => {
     if (!formData.customer) {
-      setFilteredPriceLists([]);
-      setFormData(prev => ({ ...prev, price_list: '' }));
-      setPriceLines([]);
       setAvailablePOs([]);
       setSelectedPOIds([]);
       return;
     }
-    apiClient.get(`/api/price-lists/for_customer/?customer_id=${formData.customer}`)
-      .then(res => {
-        const list = res.data?.results || res.data || [];
-        setFilteredPriceLists(list.map(pl => ({ value: pl.id, label: pl.price_list_id })));
-      })
-      .catch(() => setFilteredPriceLists([]));
-    // Fetch available POs for this customer (DRAFT or CONFIRMED, not yet converted)
     apiClient.get(`/api/sales/customer-po/?customer=${formData.customer}&page_size=500`)
       .then(res => {
         const list = res.data?.results || res.data || [];
@@ -131,24 +128,8 @@ export default function CreateSalesOrder() {
         ).map(p => ({ value: p.id, label: `${p.upload_id}${p.po_number ? ` (${p.po_number})` : ''}`, raw: p })));
       })
       .catch(() => setAvailablePOs([]));
-    setFormData(prev => ({ ...prev, price_list: '' }));
-    setPriceLines([]);
     setSelectedPOIds([]);
   }, [formData.customer]);
-
-  // 3. Price List changed → fetch price lines
-  useEffect(() => {
-    if (!formData.price_list) {
-      setPriceLines([]);
-      return;
-    }
-    apiClient.get(`/api/price-lists/${formData.price_list}/lines/`)
-      .then(res => {
-        const lines = res.data?.results || res.data || [];
-        setPriceLines(lines);
-      })
-      .catch(() => setPriceLines([]));
-  }, [formData.price_list]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -180,7 +161,6 @@ export default function CreateSalesOrder() {
 
       // Auto-fill header from first PO (or merge)
       if (selectedPOIds.length === 0) {
-        // First PO - auto-fill everything
         setFormData(prev => ({
           ...prev,
           warehouse: po.warehouse || prev.warehouse,
@@ -190,6 +170,19 @@ export default function CreateSalesOrder() {
           currency: po.currency || prev.currency,
           required_ship_date: po.required_ship_date || prev.required_ship_date,
           destination: po.destination || prev.destination,
+          delivery_terms: po.delivery_type || prev.delivery_terms,
+          party_code: po.party_code || prev.party_code,
+          delivery_due_date: po.delivery_due_date || prev.delivery_due_date,
+          indent_no: po.indent_no || prev.indent_no,
+          indent_date: po.indent_date || prev.indent_date,
+          dispatched_through: po.dispatched_through || prev.dispatched_through,
+          delivery_location: po.delivery_location || prev.delivery_location,
+          consignee_name: po.consignee_name || prev.consignee_name,
+          consignee_address: po.consignee_address || prev.consignee_address,
+          consignee_gstin: po.consignee_gstin || prev.consignee_gstin,
+          billing_address: po.billing_address || prev.billing_address,
+          billing_gstin: po.billing_gstin || prev.billing_gstin,
+          special_instructions: po.special_instructions || prev.special_instructions,
         }));
       }
 
@@ -223,11 +216,6 @@ export default function CreateSalesOrder() {
     setSelectedPOIds(prev => prev.filter(id => id !== poId));
   };
 
-  const findPriceForProduct = (productId) => {
-    if (!productId || priceLines.length === 0) return null;
-    return priceLines.find(pl => pl.product === productId);
-  };
-
   // Calculate line total: (qty * price) - discount + GST on after-discount amount
   const calcLineTotal = (line) => {
     const qty = parseFloat(line.quantity_ordered) || 0;
@@ -255,19 +243,13 @@ export default function CreateSalesOrder() {
       }
 
       if (field === 'product' && value) {
-        const priceLine = findPriceForProduct(value);
-        if (priceLine) {
-          newLine.unit_price = priceLine.rate || '';
-          newLine.discount = priceLine.discount || '0';
-          newLine.gst = priceLine.gst || '0';
-          newLine.uom = priceLine.uom || newLine.uom;
-        }
-        // Auto-set category from product if not already set
-        if (!newLine.product_category) {
-          const prod = rawProducts.find(p => p.id === value);
-          if (prod?.goods_sub_type) {
+        // Auto-set category and product details from product master
+        const prod = rawProducts.find(p => p.id === value);
+        if (prod) {
+          if (!newLine.product_category && prod.goods_sub_type) {
             newLine.product_category = prod.goods_sub_type;
           }
+          newLine.uom = prod.uom || newLine.uom;
         }
       }
 
@@ -292,6 +274,7 @@ export default function CreateSalesOrder() {
     if (!formData.company) newErrors.company = 'Company is required';
     if (!formData.customer) newErrors.customer = 'Customer is required';
     if (!formData.warehouse) newErrors.warehouse = 'Warehouse is required';
+    if (selectedPOIds.length === 0) newErrors.customer_po = 'At least one Customer PO must be linked';
     if (!formData.so_date) newErrors.so_date = 'SO Date is required';
     if (!formData.freight_terms) newErrors.freight_terms = 'Freight Terms is required';
     if (!formData.payment_terms) newErrors.payment_terms = 'Payment Terms is required';
@@ -365,10 +348,25 @@ export default function CreateSalesOrder() {
         customer: formData.customer,
         company: formData.company,
         warehouse: formData.warehouse,
-        price_list: formData.price_list || undefined,
+        price_list: formData.price_list || null,
         freight_terms: formData.freight_terms || '',
+        payment_terms: formData.payment_terms || '',
+        currency: formData.currency || 'INR',
+        delivery_terms: formData.delivery_terms || '',
         required_ship_date: formData.required_ship_date || undefined,
         destination: formData.destination || '',
+        party_code: formData.party_code || '',
+        delivery_due_date: formData.delivery_due_date || null,
+        indent_no: formData.indent_no || '',
+        indent_date: formData.indent_date || null,
+        dispatched_through: formData.dispatched_through || '',
+        delivery_location: formData.delivery_location || '',
+        consignee_name: formData.consignee_name || '',
+        consignee_address: formData.consignee_address || '',
+        consignee_gstin: formData.consignee_gstin || '',
+        billing_address: formData.billing_address || '',
+        billing_gstin: formData.billing_gstin || '',
+        special_instructions: formData.special_instructions || '',
         customer_po_ids: selectedPOIds.length > 0 ? selectedPOIds : undefined,
         remarks: formData.remarks || '',
         so_lines: soLines
@@ -445,28 +443,22 @@ export default function CreateSalesOrder() {
                 <input type="date" name="so_date" value={formData.so_date} onChange={handleChange} className={errors.so_date ? errorInputClass : inputClass} />
                 <FieldError msg={errors.so_date} />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Price List</label>
-                <select name="price_list" value={formData.price_list} onChange={handleChange} className={inputClass} disabled={!formData.customer}>
-                  <option value="">{formData.customer ? 'Select Price List' : 'Select Customer first'}</option>
-                  {filteredPriceLists.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-                {formData.price_list && priceLines.length > 0 && (
-                  <p className="text-xs text-green-600 mt-1">{priceLines.length} product(s) in price list</p>
-                )}
-              </div>
             </div>
           </div>
 
-          {/* Customer PO Selection */}
-          {formData.customer && availablePOs.length > 0 && (
-            <div>
-              <h3 className="text-lg font-semibold text-slate-800 mb-4 pb-2 border-b">Customer PO (auto-fills order details & product lines)</h3>
+          {/* Customer PO Selection — Mandatory */}
+          <div>
+            <h3 className="text-lg font-semibold text-slate-800 mb-4 pb-2 border-b">Customer PO <span className="text-red-500">*</span> <span className="text-xs font-normal text-slate-500">(auto-fills all fields & product lines)</span></h3>
+            {!formData.customer ? (
+              <div className="p-4 bg-amber-50 rounded-lg border border-amber-200 text-sm text-amber-700">Select a Company and Customer above to see available Customer POs.</div>
+            ) : availablePOs.length === 0 ? (
+              <div className="p-4 bg-slate-50 rounded-lg border text-sm text-slate-500">No available Customer POs for this customer.</div>
+            ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Select Customer PO</label>
-                  <select onChange={(e) => { if (e.target.value) handlePOSelect(e.target.value); e.target.value = ''; }} className={`${inputClass} border-blue-300`}>
-                    <option value="">-- Add PO to this Sales Order --</option>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Select Customer PO <span className="text-red-500">*</span></label>
+                  <select onChange={(e) => { if (e.target.value) handlePOSelect(e.target.value); e.target.value = ''; }} className={`${inputClass} border-blue-300 bg-blue-50`}>
+                    <option value="">-- Select PO to link --</option>
                     {availablePOs.filter(po => !selectedPOIds.includes(po.value)).map(o => (
                       <option key={o.value} value={o.value}>{o.label}</option>
                     ))}
@@ -492,8 +484,9 @@ export default function CreateSalesOrder() {
                   )}
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
+          {errors.customer_po && <div className="p-3 bg-red-50 rounded-lg text-sm text-red-700">{errors.customer_po}</div>}
 
           {/* Terms & Currency */}
           <div>
@@ -530,18 +523,59 @@ export default function CreateSalesOrder() {
             </div>
           </div>
 
-          {/* Customer & Shipping */}
+          {/* Shipping & Reference */}
           <div>
-            <h3 className="text-lg font-semibold text-slate-800 mb-4 pb-2 border-b">Customer & Shipping</h3>
+            <h3 className="text-lg font-semibold text-slate-800 mb-4 pb-2 border-b">Shipping & Reference</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Required Ship Date</label>
+              <div><label className="block text-sm font-medium text-slate-700 mb-1">Delivery Terms</label>
+                <select name="delivery_terms" value={formData.delivery_terms} onChange={handleChange} className={inputClass}>
+                  <option value="">Select</option><option value="EX_FACTORY">Ex-Factory</option><option value="DOOR_DELIVERY">Door Delivery</option><option value="CIF">CIF</option><option value="FOB">FOB</option>
+                </select></div>
+              <div><label className="block text-sm font-medium text-slate-700 mb-1">Party Code</label>
+                <input type="text" name="party_code" value={formData.party_code} onChange={handleChange} className={inputClass} /></div>
+              <div><label className="block text-sm font-medium text-slate-700 mb-1">Required Ship Date</label>
                 <input type="date" name="required_ship_date" value={formData.required_ship_date} onChange={handleChange} min={new Date().toISOString().split('T')[0]} className={errors.required_ship_date ? errorInputClass : inputClass} />
-                <FieldError msg={errors.required_ship_date} />
+                <FieldError msg={errors.required_ship_date} /></div>
+              <div><label className="block text-sm font-medium text-slate-700 mb-1">Delivery Due Date</label>
+                <input type="date" name="delivery_due_date" value={formData.delivery_due_date} onChange={handleChange} className={inputClass} /></div>
+              <div><label className="block text-sm font-medium text-slate-700 mb-1">Destination</label>
+                <input type="text" name="destination" value={formData.destination} onChange={handleChange} className={inputClass} /></div>
+              <div><label className="block text-sm font-medium text-slate-700 mb-1">Delivery Location</label>
+                <input type="text" name="delivery_location" value={formData.delivery_location} onChange={handleChange} className={inputClass} /></div>
+              <div><label className="block text-sm font-medium text-slate-700 mb-1">Dispatched Through</label>
+                <input type="text" name="dispatched_through" value={formData.dispatched_through} onChange={handleChange} className={inputClass} /></div>
+              <div><label className="block text-sm font-medium text-slate-700 mb-1">Indent No</label>
+                <input type="text" name="indent_no" value={formData.indent_no} onChange={handleChange} className={inputClass} /></div>
+              <div><label className="block text-sm font-medium text-slate-700 mb-1">Indent Date</label>
+                <input type="date" name="indent_date" value={formData.indent_date} onChange={handleChange} className={inputClass} /></div>
+            </div>
+          </div>
+
+          {/* Consignee & Billing */}
+          <div>
+            <h3 className="text-lg font-semibold text-slate-800 mb-4 pb-2 border-b">Consignee & Billing</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <h4 className="text-sm font-semibold text-blue-800 mb-3">Consignee (Ship To)</h4>
+                <p className="text-xs text-blue-600 mb-3">Auto-filled from Customer PO</p>
+                <div className="space-y-3">
+                  <div><label className="block text-xs font-medium text-slate-600 mb-1">Name</label>
+                    <input type="text" name="consignee_name" value={formData.consignee_name} onChange={handleChange} className={inputClass} /></div>
+                  <div><label className="block text-xs font-medium text-slate-600 mb-1">Address</label>
+                    <textarea name="consignee_address" value={formData.consignee_address} onChange={handleChange} rows={2} className={inputClass} /></div>
+                  <div><label className="block text-xs font-medium text-slate-600 mb-1">GST No</label>
+                    <input type="text" name="consignee_gstin" value={formData.consignee_gstin} onChange={handleChange} className={inputClass} /></div>
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Destination</label>
-                <input type="text" name="destination" value={formData.destination} onChange={handleChange} className={inputClass} placeholder="Delivery destination" />
+              <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                <h4 className="text-sm font-semibold text-green-800 mb-3">Billing Address</h4>
+                <p className="text-xs text-green-600 mb-3">Auto-filled from Customer PO</p>
+                <div className="space-y-3">
+                  <div><label className="block text-xs font-medium text-slate-600 mb-1">Address</label>
+                    <textarea name="billing_address" value={formData.billing_address} onChange={handleChange} rows={2} className={inputClass} /></div>
+                  <div><label className="block text-xs font-medium text-slate-600 mb-1">GST No</label>
+                    <input type="text" name="billing_gstin" value={formData.billing_gstin} onChange={handleChange} className={inputClass} /></div>
+                </div>
               </div>
             </div>
           </div>
@@ -556,11 +590,6 @@ export default function CreateSalesOrder() {
             </div>
             {errors.lines && (
               <div className="mb-3 p-3 bg-red-50 rounded-lg text-sm text-red-700">{errors.lines}</div>
-            )}
-            {formData.price_list && priceLines.length > 0 && (
-              <div className="mb-3 p-3 bg-blue-50 rounded-lg text-sm text-blue-800">
-                Price list loaded with {priceLines.length} product(s). Selecting a product will auto-fill price, discount & GST.
-              </div>
             )}
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -669,7 +698,11 @@ export default function CreateSalesOrder() {
           {/* Additional Information */}
           <div>
             <h3 className="text-lg font-semibold text-slate-800 mb-4 pb-2 border-b">Additional Information</h3>
-            <div className="grid grid-cols-1 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Special Instructions</label>
+                <textarea name="special_instructions" value={formData.special_instructions} onChange={handleChange} rows={3} className={inputClass} placeholder="e.g. GOODS WILL BE ACCEPTED ONLY AFTER SATISFACTORY COMPLETION OF QUALITY PARAMETERS" />
+              </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Remarks</label>
                 <textarea name="remarks" value={formData.remarks} onChange={handleChange} rows={3} className={inputClass} />

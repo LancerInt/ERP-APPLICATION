@@ -60,7 +60,7 @@ export default function CustomerPOList() {
     { field: 'customer_name', header: 'Customer', sortable: true, width: '140px' },
     { field: 'company_name', header: 'Company', sortable: true, width: '140px' },
     { field: 'warehouse_name', header: 'Warehouse', sortable: true, width: '90px' },
-    { field: 'delivery_type', header: 'Delivery Type', sortable: true, width: '95px', render: (v) => termLabel(v) },
+    { field: 'delivery_type', header: 'Delivery Terms', sortable: true, width: '95px', render: (v) => termLabel(v) },
     { field: 'party_code', header: 'Party Code', sortable: true, width: '100px' },
     // Terms
     { field: 'freight_terms', header: 'Freight Terms', sortable: true, width: '90px', render: (v) => termLabel(v) },

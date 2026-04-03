@@ -19,7 +19,7 @@ const GOODS_SUB_TYPE_OPTIONS = [
 ];
 
 const emptyLine = {
-  product_category: '', parsed_sku: '', product_description: '', item_code: '', hsn_code: '',
+  product_category: 'FINISHED_GOOD', parsed_sku: '', product_description: '', item_code: '', hsn_code: '',
   quantity: '', uom: 'KG', price: '', discount: '0', gst: '0',
   sgst_percent: '0', cgst_percent: '0', igst_percent: '0',
   delivery_schedule_date: '', line_remarks: '',
@@ -61,6 +61,10 @@ export default function CreateCustomerPO() {
     destination: '', delivery_location: '', remarks: '',
   });
   const [poLines, setPoLines] = useState([{ ...emptyLine }]);
+  const [hasPoRate, setHasPoRate] = useState('no');
+  const [poRateLines, setPoRateLines] = useState([{ product: '', rate: '' }]);
+  const [shippingAddresses, setShippingAddresses] = useState([{ name: '', address: '', gstin: '' }]);
+  const [billingAddresses, setBillingAddresses] = useState([{ address: '', gstin: '' }]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -99,6 +103,7 @@ export default function CreateCustomerPO() {
               billing_address: addrStr || co.legal_name || '',
               billing_gstin: co.gstin || '',
             }));
+            setBillingAddresses([{ address: addrStr || co.legal_name || '', gstin: co.gstin || '' }]);
           }).catch(() => {});
       }
     }
@@ -123,6 +128,7 @@ export default function CreateCustomerPO() {
         consignee_gstin: custData.gstin || '',
         delivery_location: addrStr || '',
       }));
+      setShippingAddresses([{ name: custData.customer_name || custData.name || '', address: addrStr, gstin: custData.gstin || '' }]);
       setFilteredPriceLists([]); setPriceLines([]);
       if (value) {
         apiClient.get(`/api/price-lists/for_customer/?customer_id=${value}`)
@@ -138,8 +144,16 @@ export default function CreateCustomerPO() {
   };
 
   const getFilteredProducts = (cat) => {
-    if (!cat) return productOptions;
-    return rawProducts.filter(p => p.goods_sub_type === cat).map(p => ({ value: p.id, label: p.product_name || p.sku_code || p.id }));
+    let products = rawProducts;
+    // If price list is loaded, only show products from the price list
+    if (priceLines.length > 0) {
+      const plProductIds = new Set(priceLines.map(pl => pl.product));
+      products = products.filter(p => plProductIds.has(p.id));
+    }
+    if (cat) {
+      products = products.filter(p => p.goods_sub_type === cat);
+    }
+    return products.map(p => ({ value: p.id, label: p.product_name || p.sku_code || p.id }));
   };
 
   const findPriceForProduct = (productId) => {
@@ -214,10 +228,49 @@ export default function CreateCustomerPO() {
     if (!formData.customer) { toast.error('Customer is required'); return; }
     const validLines = poLines.filter(l => l.parsed_sku && l.quantity);
     if (validLines.length === 0) { toast.error('At least one product line is required'); return; }
+
+    // PO Rate validation
+    if (hasPoRate === 'yes') {
+      const validRateLines = poRateLines.filter(r => r.product && r.rate);
+      if (validRateLines.length === 0) { toast.error('PO Rate lines are required when PO Rate is enabled'); return; }
+      // Compare each PO Rate line with product lines
+      const mismatches = [];
+      for (const rateLine of validRateLines) {
+        const matchingProductLine = validLines.find(l => l.parsed_sku === rateLine.product);
+        if (!matchingProductLine) {
+          const prodName = rawProducts.find(p => p.id === rateLine.product)?.product_name || rateLine.product;
+          mismatches.push(`${prodName}: exists in PO Rate but not in Product Lines`);
+          continue;
+        }
+        const poRate = parseFloat(rateLine.rate) || 0;
+        const lineRate = parseFloat(matchingProductLine.price) || 0;
+        if (Math.abs(poRate - lineRate) > 0.01) {
+          const prodName = rawProducts.find(p => p.id === rateLine.product)?.product_name || rateLine.product;
+          mismatches.push(`${prodName}: PO Rate (₹${poRate.toFixed(2)}) ≠ Product Line Rate (₹${lineRate.toFixed(2)})`);
+        }
+      }
+      if (mismatches.length > 0) {
+        toast.error(`Rate mismatch! Cannot create PO.\n${mismatches.join('\n')}`, { duration: 8000 });
+        return;
+      }
+    }
+
     setIsLoading(true);
     try {
+      // Merge multiple addresses into the main fields
+      const mergedConsigneeName = shippingAddresses.map((s, i) => s.name).filter(Boolean).join(' | ');
+      const mergedConsigneeAddr = shippingAddresses.map((s, i) => s.address).filter(Boolean).join(' | ');
+      const mergedConsigneeGstin = shippingAddresses.map((s, i) => s.gstin).filter(Boolean).join(' | ');
+      const mergedBillingAddr = billingAddresses.map((b, i) => b.address).filter(Boolean).join(' | ');
+      const mergedBillingGstin = billingAddresses.map((b, i) => b.gstin).filter(Boolean).join(' | ');
+
       const payload = {
         ...formData,
+        consignee_name: mergedConsigneeName,
+        consignee_address: mergedConsigneeAddr,
+        consignee_gstin: mergedConsigneeGstin,
+        billing_address: mergedBillingAddr,
+        billing_gstin: mergedBillingGstin,
         company: formData.company || null, warehouse: formData.warehouse || null,
         price_list: formData.price_list || null,
         required_ship_date: formData.required_ship_date || null,
@@ -273,7 +326,7 @@ export default function CreateCustomerPO() {
               </div>
               <div><label className="block text-sm font-medium text-slate-700 mb-1">Customer PO Number</label>
                 <input type="text" name="po_number" value={formData.po_number} onChange={handleChange} className={inputClass} placeholder="e.g. PO-1010125-05881" /></div>
-              <div><label className="block text-sm font-medium text-slate-700 mb-1">Delivery Type</label>
+              <div><label className="block text-sm font-medium text-slate-700 mb-1">Delivery Terms</label>
                 <select name="delivery_type" value={formData.delivery_type} onChange={handleChange} className={inputClass}>
                   <option value="">Select</option><option value="EX_FACTORY">Ex-Factory</option><option value="DOOR_DELIVERY">Door Delivery</option><option value="CIF">CIF</option><option value="FOB">FOB</option>
                 </select></div>
@@ -319,35 +372,182 @@ export default function CreateCustomerPO() {
             </div>
           </div>
 
-          {/* Consignee (Ship To) & Billing */}
+          {/* Consignee (Ship To) — Multiple */}
           <div>
-            <h3 className="text-lg font-semibold text-slate-800 mb-4 pb-2 border-b">Consignee & Billing</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Consignee - from Customer */}
-              <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                <h4 className="text-sm font-semibold text-blue-800 mb-3">Consignee (Ship To)</h4>
-                <p className="text-xs text-blue-600 mb-3">Auto-filled from selected customer</p>
-                <div className="space-y-3">
-                  <div><label className="block text-xs font-medium text-slate-600 mb-1">Name</label>
-                    <input type="text" name="consignee_name" value={formData.consignee_name} onChange={handleChange} className={inputClass} /></div>
-                  <div><label className="block text-xs font-medium text-slate-600 mb-1">Address</label>
-                    <textarea name="consignee_address" value={formData.consignee_address} onChange={handleChange} rows={2} className={inputClass} /></div>
-                  <div><label className="block text-xs font-medium text-slate-600 mb-1">GST No</label>
-                    <input type="text" name="consignee_gstin" value={formData.consignee_gstin} onChange={handleChange} className={inputClass} placeholder="Customer GSTIN" /></div>
-                </div>
-              </div>
-              {/* Billing - from Company */}
-              <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-                <h4 className="text-sm font-semibold text-green-800 mb-3">Billing Address</h4>
-                <p className="text-xs text-green-600 mb-3">Auto-filled from selected company</p>
-                <div className="space-y-3">
-                  <div><label className="block text-xs font-medium text-slate-600 mb-1">Address</label>
-                    <textarea name="billing_address" value={formData.billing_address} onChange={handleChange} rows={2} className={inputClass} /></div>
-                  <div><label className="block text-xs font-medium text-slate-600 mb-1">GST No</label>
-                    <input type="text" name="billing_gstin" value={formData.billing_gstin} onChange={handleChange} className={inputClass} placeholder="Company GSTIN" /></div>
-                </div>
-              </div>
+            <div className="flex items-center justify-between mb-4 pb-2 border-b">
+              <h3 className="text-lg font-semibold text-slate-800">Shipping Addresses (Consignee)</h3>
+              <button type="button" onClick={() => setShippingAddresses(prev => [...prev, { name: '', address: '', gstin: '' }])}
+                className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100"><Plus size={16} /> Add Shipping Address</button>
             </div>
+            <div className="space-y-4">
+              {shippingAddresses.map((sa, idx) => (
+                <div key={idx} className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-sm font-semibold text-blue-800">Shipping Address #{idx + 1} {idx === 0 && <span className="text-xs font-normal text-blue-500 ml-1">(Auto-filled from customer)</span>}</h4>
+                    {shippingAddresses.length > 1 && (
+                      <button type="button" onClick={() => setShippingAddresses(prev => prev.filter((_, i) => i !== idx))} className="text-red-500 hover:text-red-700"><Trash2 size={14} /></button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div><label className="block text-xs font-medium text-slate-600 mb-1">Name</label>
+                      <input type="text" value={sa.name} onChange={(e) => setShippingAddresses(prev => prev.map((s, i) => i === idx ? { ...s, name: e.target.value } : s))} className={inputClass} /></div>
+                    <div><label className="block text-xs font-medium text-slate-600 mb-1">Address</label>
+                      <input type="text" value={sa.address} onChange={(e) => setShippingAddresses(prev => prev.map((s, i) => i === idx ? { ...s, address: e.target.value } : s))} className={inputClass} /></div>
+                    <div><label className="block text-xs font-medium text-slate-600 mb-1">GST No</label>
+                      <input type="text" value={sa.gstin} onChange={(e) => setShippingAddresses(prev => prev.map((s, i) => i === idx ? { ...s, gstin: e.target.value } : s))} className={inputClass} placeholder="GSTIN" /></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Billing Addresses — Multiple */}
+          <div>
+            <div className="flex items-center justify-between mb-4 pb-2 border-b">
+              <h3 className="text-lg font-semibold text-slate-800">Billing Addresses</h3>
+              <button type="button" onClick={() => setBillingAddresses(prev => [...prev, { name: '', address: '', gstin: '', source: 'company' }])}
+                className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-50 text-green-700 rounded-lg text-sm font-medium hover:bg-green-100"><Plus size={16} /> Add Billing Address</button>
+            </div>
+            <div className="space-y-4">
+              {billingAddresses.map((ba, idx) => (
+                <div key={idx} className="p-4 bg-green-50 rounded-lg border border-green-200">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-semibold text-green-800">Billing Address #{idx + 1}</h4>
+                    {billingAddresses.length > 1 && (
+                      <button type="button" onClick={() => setBillingAddresses(prev => prev.filter((_, i) => i !== idx))} className="text-red-500 hover:text-red-700"><Trash2 size={14} /></button>
+                    )}
+                  </div>
+                  {/* Source Radio */}
+                  <div className="flex items-center gap-4 mb-3">
+                    <span className="text-xs font-medium text-slate-600">Auto-fill from:</span>
+                    <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                      <input type="radio" name={`billing_source_${idx}`} value="company" checked={(ba.source || 'company') === 'company'}
+                        onChange={() => {
+                          if (!formData.company) { toast.error('Select a company first'); return; }
+                          apiClient.get(`/api/companies/${formData.company}/`).then(r => {
+                            const co = r.data;
+                            const addr = co.registered_address;
+                            let addrStr = '';
+                            if (addr) { if (typeof addr === 'string') addrStr = addr; else if (Array.isArray(addr)) addrStr = addr.filter(Boolean).join(', '); else if (typeof addr === 'object') addrStr = [addr.street, addr.city, addr.state, addr.postal_code].filter(Boolean).join(', '); }
+                            setBillingAddresses(prev => prev.map((b, i) => i === idx ? { ...b, source: 'company', name: co.legal_name || '', address: addrStr || co.legal_name || '', gstin: co.gstin || '' } : b));
+                          }).catch(() => toast.error('Failed to fetch company'));
+                        }}
+                        className="w-3.5 h-3.5 text-green-600 border-slate-300 focus:ring-green-500" />
+                      <span className="text-xs text-slate-700">Company Address</span>
+                    </label>
+                    <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                      <input type="radio" name={`billing_source_${idx}`} value="factory" checked={ba.source === 'factory'}
+                        onChange={() => {
+                          if (!formData.warehouse) { toast.error('Select a warehouse/factory first'); return; }
+                          // Fetch factory address but always use company GSTIN
+                          Promise.all([
+                            apiClient.get(`/api/warehouses/${formData.warehouse}/`),
+                            formData.company ? apiClient.get(`/api/companies/${formData.company}/`) : Promise.resolve({ data: {} }),
+                          ]).then(([whRes, coRes]) => {
+                            const wh = whRes.data; const co = coRes.data;
+                            const addr = wh.address;
+                            let addrStr = '';
+                            if (addr) { if (typeof addr === 'string') addrStr = addr; else if (Array.isArray(addr)) addrStr = addr.filter(Boolean).join(', '); else if (typeof addr === 'object') addrStr = [addr.street, addr.city, addr.state, addr.postal_code].filter(Boolean).join(', '); }
+                            setBillingAddresses(prev => prev.map((b, i) => i === idx ? { ...b, source: 'factory', name: wh.name || '', address: addrStr || wh.name || '', gstin: co.gstin || '' } : b));
+                          }).catch(() => toast.error('Failed to fetch factory'));
+                        }}
+                        className="w-3.5 h-3.5 text-green-600 border-slate-300 focus:ring-green-500" />
+                      <span className="text-xs text-slate-700">Factory Address</span>
+                    </label>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div><label className="block text-xs font-medium text-slate-600 mb-1">Name</label>
+                      <input type="text" value={ba.name || ''} onChange={(e) => setBillingAddresses(prev => prev.map((b, i) => i === idx ? { ...b, name: e.target.value } : b))} className={inputClass} /></div>
+                    <div><label className="block text-xs font-medium text-slate-600 mb-1">Address</label>
+                      <input type="text" value={ba.address} onChange={(e) => setBillingAddresses(prev => prev.map((b, i) => i === idx ? { ...b, address: e.target.value } : b))} className={inputClass} /></div>
+                    <div><label className="block text-xs font-medium text-slate-600 mb-1">GST No</label>
+                      <input type="text" value={ba.gstin} onChange={(e) => setBillingAddresses(prev => prev.map((b, i) => i === idx ? { ...b, gstin: e.target.value } : b))} className={inputClass} placeholder="GSTIN" /></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* PO Rate Toggle */}
+          <div>
+            <h3 className="text-lg font-semibold text-slate-800 mb-4 pb-2 border-b">PO Rate</h3>
+            <div className="flex items-center gap-6 mb-4">
+              <label className="text-sm font-medium text-slate-700">Does this PO have a PO Rate?</label>
+              <label className="inline-flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="has_po_rate" value="yes" checked={hasPoRate === 'yes'} onChange={() => setHasPoRate('yes')}
+                  className="w-4 h-4 text-primary-600 border-slate-300 focus:ring-primary-500" />
+                <span className="text-sm text-slate-700">Yes</span>
+              </label>
+              <label className="inline-flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="has_po_rate" value="no" checked={hasPoRate === 'no'} onChange={() => { setHasPoRate('no'); setPoRateLines([{ product: '', rate: '' }]); }}
+                  className="w-4 h-4 text-primary-600 border-slate-300 focus:ring-primary-500" />
+                <span className="text-sm text-slate-700">No</span>
+              </label>
+            </div>
+
+            {hasPoRate === 'yes' && (
+              <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-semibold text-amber-800">PO Rate Lines</h4>
+                  <button type="button" onClick={() => setPoRateLines(prev => [...prev, { product: '', rate: '' }])}
+                    className="inline-flex items-center gap-1 px-3 py-1 bg-amber-100 text-amber-700 rounded-lg text-xs font-medium hover:bg-amber-200">
+                    <Plus size={14} /> Add Rate Line
+                  </button>
+                </div>
+                <p className="text-xs text-amber-600 mb-3">Enter the PO rates. These will be compared with Product Line rates — mismatches will prevent PO creation.</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead><tr className="border-b border-amber-200">
+                      <th className="text-left px-2 py-2 font-medium text-amber-700">#</th>
+                      <th className="text-left px-2 py-2 font-medium text-amber-700">Category</th>
+                      <th className="text-left px-2 py-2 font-medium text-amber-700">Product <span className="text-red-500">*</span></th>
+                      <th className="text-right px-2 py-2 font-medium text-amber-700">Qty</th>
+                      <th className="text-right px-2 py-2 font-medium text-amber-700">PO Rate <span className="text-red-500">*</span></th>
+                      <th className="text-center px-2 py-2 font-medium text-amber-700">Match</th>
+                      <th className="px-2 py-2"></th>
+                    </tr></thead>
+                    <tbody>{poRateLines.map((rl, idx) => {
+                      // Check if rate matches product line
+                      const matchingPL = poLines.find(l => l.parsed_sku === rl.product && l.parsed_sku);
+                      const poRate = parseFloat(rl.rate) || 0;
+                      const plRate = matchingPL ? (parseFloat(matchingPL.price) || 0) : null;
+                      const isMatch = plRate !== null && poRate > 0 && Math.abs(poRate - plRate) <= 0.01;
+                      const isMismatch = plRate !== null && poRate > 0 && Math.abs(poRate - plRate) > 0.01;
+                      return (
+                        <tr key={idx} className="border-b border-amber-100">
+                          <td className="px-2 py-2 text-amber-600">{idx + 1}</td>
+                          <td className="px-2 py-2">
+                            <select value={rl.category || ''} onChange={(e) => setPoRateLines(prev => prev.map((r, i) => i === idx ? { ...r, category: e.target.value, product: '' } : r))} className={inputClass} style={{ minWidth: '110px' }}>
+                              {GOODS_SUB_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            </select>
+                          </td>
+                          <td className="px-2 py-2">
+                            <select value={rl.product} onChange={(e) => setPoRateLines(prev => prev.map((r, i) => i === idx ? { ...r, product: e.target.value } : r))} className={inputClass} style={{ minWidth: '160px' }}>
+                              <option value="">Select Product</option>
+                              {getFilteredProducts(rl.category).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            </select>
+                          </td>
+                          <td className="px-2 py-2">
+                            <input type="number" step="0.01" min="0" value={rl.quantity || ''} onChange={(e) => setPoRateLines(prev => prev.map((r, i) => i === idx ? { ...r, quantity: e.target.value } : r))} className={inputClass} style={{ minWidth: '80px' }} placeholder="0" />
+                          </td>
+                          <td className="px-2 py-2">
+                            <input type="number" step="0.01" min="0" value={rl.rate} onChange={(e) => setPoRateLines(prev => prev.map((r, i) => i === idx ? { ...r, rate: e.target.value } : r))} className={inputClass} style={{ minWidth: '100px' }} placeholder="0.00" />
+                          </td>
+                          <td className="px-2 py-2 text-center">
+                            {isMatch && <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">Match</span>}
+                            {isMismatch && <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">Mismatch</span>}
+                            {!isMatch && !isMismatch && <span className="text-slate-400 text-xs">-</span>}
+                          </td>
+                          <td className="px-2 py-2">
+                            <button type="button" onClick={() => { if (poRateLines.length > 1) setPoRateLines(prev => prev.filter((_, i) => i !== idx)); }} disabled={poRateLines.length <= 1} className="text-red-500 disabled:opacity-30"><Trash2 size={14} /></button>
+                          </td>
+                        </tr>
+                      );
+                    })}</tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Product Lines */}
@@ -358,7 +558,7 @@ export default function CreateCustomerPO() {
             </div>
             {formData.price_list && priceLines.length > 0 && (
               <div className="mb-3 p-3 bg-blue-50 rounded-lg text-sm text-blue-800">
-                Price list loaded with {priceLines.length} product(s). Selecting a product will auto-fill price, discount & GST.
+                Price list loaded with {priceLines.length} product(s). Only customer products are shown. Selecting a product will auto-fill price, discount & GST.
               </div>
             )}
             <div className="overflow-x-auto">
