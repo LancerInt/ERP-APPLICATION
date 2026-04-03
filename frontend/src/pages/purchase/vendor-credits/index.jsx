@@ -4,7 +4,9 @@ import MainLayout from '../../../components/layout/MainLayout';
 import PageHeader from '../../../components/common/PageHeader';
 import DataTable from '../../../components/common/DataTable';
 import StatusBadge from '../../../components/common/StatusBadge';
-import { Pencil } from 'lucide-react';
+import { Pencil, Trash2 } from 'lucide-react';
+import toast from 'react-hot-toast';
+import apiClient from '../../../utils/api.js';
 import useApiData from '../../../hooks/useApiData.js';
 import UnifiedFilterPanel, { useUnifiedFilter } from '../components/UnifiedFilterPanel';
 
@@ -24,9 +26,21 @@ const FILTER_FIELDS = [
 
 export default function VendorCreditList() {
   const navigate = useNavigate();
-  const { data, isLoading, error } = useApiData('/api/purchase/vendor-credits/');
+  const { data, isLoading, error, refetch } = useApiData('/api/purchase/vendor-credits/');
   const [showFilters, setShowFilters] = useState(false);
   const filter = useUnifiedFilter(FILTER_FIELDS);
+
+  const handleDelete = async (e, row) => {
+    e.stopPropagation();
+    if (!window.confirm(`Are you sure you want to delete ${row.credit_no}? This action cannot be undone.`)) return;
+    try {
+      await apiClient.delete(`/api/purchase/vendor-credits/${row.id}/`);
+      toast.success(`${row.credit_no} deleted successfully`);
+      refetch();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || err.response?.data?.error || 'Failed to delete');
+    }
+  };
 
   const columns = [
     { key: 'credit_no', label: 'Credit No', sortable: true },
@@ -71,9 +85,14 @@ export default function VendorCreditList() {
     {
       key: 'actions', label: '', sortable: false,
       render: (_, row) => (
-        <button onClick={(e) => { e.stopPropagation(); navigate(`/purchase/vendor-credits/${row.id}`); }} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition" title="Edit">
-          <Pencil size={15} />
-        </button>
+        <div className="flex items-center gap-1">
+          <button onClick={(e) => { e.stopPropagation(); navigate(`/purchase/vendor-credits/${row.id}`); }} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition" title="Edit">
+            <Pencil size={15} />
+          </button>
+          <button onClick={(e) => handleDelete(e, row)} className="p-1.5 text-red-500 hover:bg-red-50 rounded transition" title="Delete">
+            <Trash2 size={15} />
+          </button>
+        </div>
       ),
     },
   ];

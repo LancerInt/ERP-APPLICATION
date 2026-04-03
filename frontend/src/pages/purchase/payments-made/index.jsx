@@ -18,7 +18,7 @@ const FILTER_FIELDS = [
   { value: 'reference_no', label: 'Reference', type: 'text' },
   { value: 'status', label: 'Status', type: 'select', options: [
     { value: 'DRAFT', label: 'Draft' }, { value: 'APPROVED', label: 'Approved' },
-    { value: 'SENT', label: 'Sent' }, { value: 'CANCELLED', label: 'Cancelled' },
+    { value: 'SENT', label: 'Email Sent' }, { value: 'CANCELLED', label: 'Cancelled' },
   ]},
 ];
 
@@ -46,7 +46,12 @@ export default function PaymentsMadeList() {
     },
     {
       key: 'payment_mode_display', label: 'Mode',
-      render: (value, row) => value || row.payment_mode || '-',
+      render: (value, row) => {
+        const mode = row.payment_mode;
+        if (mode === 'ADVANCE') return <span className="px-2 py-1 text-xs font-semibold bg-amber-100 text-amber-700 rounded">Advance</span>;
+        if (mode === 'CREDIT') return <span className="px-2 py-1 text-xs font-semibold bg-purple-100 text-purple-700 rounded">Credit</span>;
+        return value || mode || '-';
+      },
     },
     { key: 'reference_no', label: 'Reference', render: (v) => v || '-' },
     {

@@ -369,11 +369,12 @@ class QuoteResponseSerializer(serializers.ModelSerializer):
     rfq_no = serializers.CharField(source='rfq.rfq_no', read_only=True, default='')
     total_cost = serializers.SerializerMethodField()
     pr_numbers = serializers.SerializerMethodField()
+    pr_ids = serializers.SerializerMethodField()
 
     class Meta:
         model = QuoteResponse
         fields = [
-            'id', 'quote_id', 'rfq', 'rfq_no', 'pr_numbers', 'vendor', 'vendor_name', 'vendor_code', 'quote_date',
+            'id', 'quote_id', 'rfq', 'rfq_no', 'pr_numbers', 'pr_ids', 'vendor', 'vendor_name', 'vendor_code', 'quote_date',
             'price_valid_till', 'currency', 'freight_terms', 'payment_terms',
             'delivery_terms', 'lead_time_days', 'remarks', 'evaluation_score',
             'chosen_flag', 'quote_lines', 'total_cost', 'created_at', 'updated_at'
@@ -400,12 +401,18 @@ class QuoteResponseSerializer(serializers.ModelSerializer):
             return [pr.pr_no for pr in prs]
         return []
 
+    def get_pr_ids(self, obj):
+        """Get PR IDs linked through the RFQ."""
+        if obj.rfq:
+            return [str(pr.id) for pr in obj.rfq.linked_prs.all()]
+        return []
+
 
 class ComparisonEntrySerializer(serializers.ModelSerializer):
     """Serializer for quote comparison entries."""
 
     vendor_name = serializers.CharField(
-        source='vendor.name',
+        source='vendor.vendor_name',
         read_only=True
     )
 
@@ -850,6 +857,7 @@ class ReceiptAdviceSerializer(serializers.ModelSerializer):
     qc_status_display = serializers.CharField(source='get_qc_status_display', read_only=True)
     total_received = serializers.SerializerMethodField()
     linked_po_numbers = serializers.SerializerMethodField()
+    linked_pr_numbers = serializers.SerializerMethodField()
     receipt_status = serializers.SerializerMethodField()
 
     class Meta:
@@ -859,7 +867,7 @@ class ReceiptAdviceSerializer(serializers.ModelSerializer):
             'godown', 'godown_name', 'vendor', 'vendor_name', 'vehicle_number',
             'driver_name', 'qc_routing', 'qc_routing_display', 'qc_status',
             'qc_status_display', 'partial_receipt_flag', 'remarks', 'linked_pos',
-            'linked_po_numbers', 'receipt_lines', 'packing_materials', 'freight_details',
+            'linked_po_numbers', 'linked_pr_numbers', 'receipt_lines', 'packing_materials', 'freight_details',
             'loading_unloading_wages', 'freight_payment_schedules', 'freight_advices',
             'total_received', 'receipt_status', 'created_at', 'updated_at'
         ]
@@ -881,6 +889,13 @@ class ReceiptAdviceSerializer(serializers.ModelSerializer):
 
     def get_linked_po_numbers(self, obj):
         return [po.po_no for po in obj.linked_pos.all()]
+
+    def get_linked_pr_numbers(self, obj):
+        pr_numbers = set()
+        for po in obj.linked_pos.all():
+            for pr in po.linked_prs.all():
+                pr_numbers.add(pr.pr_no)
+        return list(pr_numbers)
 
     def get_receipt_status(self, obj):
         """Compute receipt status based on PO state."""

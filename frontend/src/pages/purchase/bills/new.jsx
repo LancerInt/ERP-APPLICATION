@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import MainLayout from '../../../components/layout/MainLayout';
 import PageHeader from '../../../components/common/PageHeader';
@@ -10,6 +10,7 @@ import FileAttachments, { uploadPendingFiles } from '../components/FileAttachmen
 
 export default function CreateVendorBill() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { options: vendorOptions } = useLookup('/api/vendors/');
   const { raw: poRaw } = useLookup('/api/purchase/orders/');
   const { raw: receiptRaw } = useLookup('/api/purchase/receipts/');
@@ -24,10 +25,10 @@ export default function CreateVendorBill() {
     }).catch(() => {});
   }, []);
 
-  const poOptions = poRaw.map(p => ({ value: p.id, label: `${p.po_no} - ${p.vendor_name || ''}` }));
+  const poOptions = poRaw.map(p => ({ value: p.id, label: p.po_no }));
   const receiptOptions = receiptRaw
     .filter(r => !billedReceiptIds.has(r.id))
-    .map(r => ({ value: r.id, label: `${r.receipt_advice_no} - ${r.vendor_name || ''}` }));
+    .map(r => ({ value: r.id, label: r.receipt_advice_no }));
   const productOptions = productRaw.map(p => ({ value: p.id, label: `${p.sku_code || ''} - ${p.product_name}`, uom: p.uom || '' }));
 
   const [isLoading, setIsLoading] = useState(false);
@@ -169,6 +170,70 @@ export default function CreateVendorBill() {
     }).catch(() => {});
   };
 
+  // Auto-fill from receipt_id query param when redirected from Receipt page
+  const [prefillReceiptData, setPrefillReceiptData] = useState(null);
+
+  // Auto-fill from receipt_id query param — fetch receipt + PO data directly
+  useEffect(() => {
+    const receiptId = searchParams.get('receipt_id');
+    if (!receiptId || prefillReceiptData) return;
+
+    apiClient.get(`/api/purchase/receipts/${receiptId}/`).then(async (res) => {
+      setPrefillReceiptData(res.data);
+      const r = res.data;
+      const poId = (r.linked_pos || [])[0] || '';
+
+      setFormData(prev => ({
+        ...prev,
+        receipt_advice: receiptId,
+        vendor: r.vendor || prev.vendor,
+        purchase_order: poId,
+      }));
+
+      // Build line items from receipt lines
+      const receiptLines = r.receipt_lines || [];
+      let newLines = receiptLines.map(rl => ({
+        product: rl.product || rl.product_service || '',
+        description: rl.product_name || '',
+        quantity: rl.quantity_received || '1',
+        uom: rl.uom || '',
+        rate: '0',
+        discount_percent: '0',
+        tax_percent: '0',
+        amount: '0',
+      }));
+
+      // Fetch PO directly to get rates & GST
+      if (poId) {
+        try {
+          const poRes = await apiClient.get(`/api/purchase/orders/${poId}/`);
+          const poData = poRes.data;
+          if (poData?.po_lines) {
+            newLines = newLines.map(line => {
+              const poLine = poData.po_lines.find(pl => pl.product_service === line.product);
+              if (poLine) {
+                const rate = parseFloat(poLine.unit_price) || 0;
+                const gst = parseFloat(poLine.gst) || 0;
+                const qty = parseFloat(line.quantity) || 0;
+                const base = qty * rate;
+                const withTax = base + (base * gst / 100);
+                return {
+                  ...line,
+                  rate: poLine.unit_price || '0',
+                  tax_percent: poLine.gst || '0',
+                  amount: withTax.toFixed(2),
+                };
+              }
+              return line;
+            });
+          }
+        } catch {}
+      }
+
+      setLines(newLines);
+    }).catch(() => {});
+  }, [searchParams]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
@@ -227,10 +292,14 @@ export default function CreateVendorBill() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
                 <label className={labelClass}>Receipt Advice <span className="text-red-500">*</span></label>
-                <select name="receipt_advice" value={formData.receipt_advice} onChange={handleReceiptChange} required className={inputClass}>
-                  <option value="">Select Receipt Advice</option>
-                  {receiptOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
+                {searchParams.get('receipt_id') && formData.receipt_advice ? (
+                  <input type="text" readOnly value={prefillReceiptData?.receipt_advice_no || formData.receipt_advice} className={`${inputClass} bg-slate-50 cursor-not-allowed`} />
+                ) : (
+                  <select name="receipt_advice" value={formData.receipt_advice} onChange={handleReceiptChange} required className={inputClass}>
+                    <option value="">Select Receipt Advice</option>
+                    {receiptOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                )}
               </div>
               <div>
                 <label className={labelClass}>Vendor <span className="text-red-500">*</span></label>
@@ -241,10 +310,14 @@ export default function CreateVendorBill() {
               </div>
               <div>
                 <label className={labelClass}>Purchase Order</label>
-                <select name="purchase_order" value={formData.purchase_order} onChange={handleChange} className={inputClass}>
-                  <option value="">Select PO (optional)</option>
-                  {poOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
+                {searchParams.get('receipt_id') && formData.purchase_order ? (
+                  <input type="text" readOnly value={prefillReceiptData?.linked_po_numbers?.[0] || poOptions.find(o => o.value === formData.purchase_order)?.label || formData.purchase_order} className={`${inputClass} bg-slate-50 cursor-not-allowed`} />
+                ) : (
+                  <select name="purchase_order" value={formData.purchase_order} onChange={handleChange} className={inputClass}>
+                    <option value="">Select PO (optional)</option>
+                    {poOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                )}
               </div>
               <div>
                 <label className={labelClass}>Vendor Invoice No</label>

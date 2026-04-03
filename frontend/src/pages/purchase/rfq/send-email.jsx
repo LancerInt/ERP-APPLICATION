@@ -425,14 +425,18 @@ export default function SendRFQEmail() {
               <button
                 type="button"
                 onClick={handleSendMailClick}
-                disabled={!canSend || isPreviewing}
-                className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                disabled={!canSend || isPreviewing || (sendResults?.results?.some(r => r.success || r.status === 'sent'))}
+                className={`flex-1 px-4 py-2 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition ${
+                  sendResults?.results?.some(r => r.success || r.status === 'sent') ? 'bg-green-600' : 'bg-primary-600 hover:bg-primary-700'
+                }`}
               >
                 {isPreviewing ? (
                   <span className="flex items-center justify-center gap-2">
                     <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
                     Preparing Preview...
                   </span>
+                ) : sendResults?.results?.some(r => r.success || r.status === 'sent') ? (
+                  '✓ Email Sent'
                 ) : `Send Email to ${sendableCount} Vendor${sendableCount !== 1 ? 's' : ''}`}
               </button>
               {/* WhatsApp Send All Button */}
@@ -596,7 +600,7 @@ export default function SendRFQEmail() {
                 <div key={idx} className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm ${success ? 'bg-green-50' : 'bg-red-50'}`}>
                   <span className="font-medium text-slate-800">{vendorName}</span>
                   <span className={`text-xs font-medium ${success ? 'text-green-700' : 'text-red-700'}`}>
-                    {success ? 'Sent' : result.error || result.message || 'Failed'}
+                    {success ? 'Email Sent' : result.error || result.message || 'Failed'}
                   </span>
                 </div>
               );
@@ -715,7 +719,7 @@ export default function SendRFQEmail() {
                   const vendorName = vendor
                     ? (vendor.vendor_name || vendor.legal_name || vendor.name || vendor.vendor_code)
                     : (log.vendor_name || log.recipient || `Vendor ${log.vendor_id || log.vendor || '-'}`);
-                  const logStatus = log.status || (log.email_sent ? 'Sent' : (log.success ? 'Sent' : 'Failed'));
+                  const logStatus = log.status || (log.email_sent ? 'Email Sent' : (log.success ? 'Email Sent' : 'Failed'));
                   return (
                     <tr key={log.id || idx} className="hover:bg-slate-50">
                       <td className="py-2 px-3 font-medium text-slate-800">{vendorName}</td>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { Plus, Trash2 } from 'lucide-react';
 import MainLayout from '../../../components/layout/MainLayout';
@@ -51,6 +51,7 @@ const emptyWageLine = {
 
 export default function CreateReceiptAdvice() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { options: vendorOptions, raw: vendorRaw } = useLookup('/api/vendors/');
   const { options: transporterOptions } = useLookup('/api/transporters/');
   const [selectedCompany, setSelectedCompany] = useState('');
@@ -60,7 +61,7 @@ export default function CreateReceiptAdvice() {
     .filter(po => !po.is_fully_received)
     .map(po => ({
       value: po.id,
-      label: `${po.po_no} — ${po.vendor_name || po.vendor || ''} (${po.warehouse_name || ''})`,
+      label: po.po_no,
     }));
 
   // Filter contractor vendors for wages section
@@ -84,7 +85,7 @@ export default function CreateReceiptAdvice() {
     vendor: '',
     warehouse: '',
     godown: '',
-    receipt_date: '',
+    receipt_date: new Date().toISOString().split('T')[0],
     driver_name: '',
     qc_routing: '',
     qc_status: '',
@@ -104,6 +105,48 @@ export default function CreateReceiptAdvice() {
   const [freightDetails, setFreightDetails] = useState([]);
   const [wageLines, setWageLines] = useState([]);
   const [poLines, setPoLines] = useState([]);
+
+  // Auto-fill from PO when redirected from PO detail page with ?po_id=
+  useEffect(() => {
+    const poId = searchParams.get('po_id');
+    if (!poId || poRawData.length === 0) return;
+    // Avoid re-running if already set
+    if (formData.po_no === poId) return;
+
+    const selectedPO = poRawData.find(po => String(po.id) === String(poId));
+    if (!selectedPO) return;
+
+    // Set company for warehouse filtering
+    if (selectedPO.company) setSelectedCompany(selectedPO.company);
+
+    // Auto-fill form fields
+    setFormData(prev => ({
+      ...prev,
+      po_no: selectedPO.id,
+      vendor: selectedPO.vendor || '',
+      warehouse: selectedPO.warehouse || '',
+    }));
+
+    // Set PO lines for reference
+    setPoLines(selectedPO.po_lines || []);
+
+    // Auto-populate receipt lines from PO lines
+    const lines = selectedPO.po_lines || [];
+    if (lines.length > 0) {
+      const newLines = lines.map(pl => ({
+        product: pl.product_service || '',
+        po_line: pl.id || '',
+        quantity_received: '',
+        po_quantity: pl.quantity_ordered || 0,
+        already_received: pl.received_quantity || 0,
+        uom: pl.uom || 'KG',
+        batch_no: '',
+        godown: '',
+        remarks: '',
+      }));
+      setReceiptLines(newLines);
+    }
+  }, [poRawData, searchParams]);
 
   // When PO is selected, auto-fill vendor, warehouse, and receipt lines from PO
   const handlePOChange = (e) => {
@@ -270,10 +313,14 @@ export default function CreateReceiptAdvice() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">PO No <span className="text-red-500">*</span></label>
-                <select name="po_no" value={formData.po_no} onChange={handlePOChange} required className={inputClass}>
-                  <option value="">Select PO</option>
-                  {poOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
+                {searchParams.get('po_id') && formData.po_no ? (
+                  <input type="text" readOnly value={poRawData.find(p => p.id === formData.po_no)?.po_no || formData.po_no} className={`${inputClass} bg-slate-50 cursor-not-allowed`} />
+                ) : (
+                  <select name="po_no" value={formData.po_no} onChange={handlePOChange} required className={inputClass}>
+                    <option value="">Select PO</option>
+                    {poOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Vendor <span className="text-red-500">*</span></label>
@@ -364,7 +411,6 @@ export default function CreateReceiptAdvice() {
                   <tr className="bg-slate-50 border-b">
                     <th className="text-left px-3 py-2 font-medium text-slate-600">#</th>
                     <th className="text-left px-3 py-2 font-medium text-slate-600">Product <span className="text-red-500">*</span></th>
-                    <th className="text-left px-3 py-2 font-medium text-slate-600">PO Line</th>
                     <th className="text-right px-3 py-2 font-medium text-slate-600">PO Qty</th>
                     <th className="text-right px-3 py-2 font-medium text-slate-600">Rcvd</th>
                     <th className="text-right px-3 py-2 font-medium text-slate-600">Balance</th>
@@ -384,14 +430,6 @@ export default function CreateReceiptAdvice() {
                         <select value={line.product} onChange={(e) => handleReceiptLineChange(index, 'product', e.target.value)} className={inputClass} style={{ minWidth: '160px' }}>
                           <option value="">Select Product</option>
                           {productOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                        </select>
-                      </td>
-                      <td className="px-3 py-2">
-                        <select value={line.po_line} onChange={(e) => handleReceiptLineChange(index, 'po_line', e.target.value)} className={inputClass} style={{ minWidth: '140px' }}>
-                          <option value="">Select PO Line</option>
-                          {poLines.map(pl => (
-                            <option key={pl.id} value={pl.id}>Line {pl.line_no} - {pl.product_name || pl.product_code}</option>
-                          ))}
                         </select>
                       </td>
                       <td className="px-3 py-2 text-right text-slate-600">

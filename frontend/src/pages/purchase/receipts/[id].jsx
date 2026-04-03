@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Pencil, Save, X, Plus, Trash2 } from 'lucide-react';
+import { Pencil, Save, X, Plus, Trash2, Truck, FileText } from 'lucide-react';
 import MainLayout from '../../../components/layout/MainLayout';
 import PageHeader from '../../../components/common/PageHeader';
 import StatusBadge from '../../../components/common/StatusBadge';
@@ -317,7 +317,6 @@ export default function ReceiptAdviceDetail() {
                     <tr className="bg-slate-50 border-b">
                       <th className="text-left px-3 py-2 font-medium text-slate-600">#</th>
                       <th className="text-left px-3 py-2 font-medium text-slate-600">Product {isEditing && <span className="text-red-500">*</span>}</th>
-                      <th className="text-left px-3 py-2 font-medium text-slate-600">PO Line</th>
                       <th className="text-right px-3 py-2 font-medium text-slate-600">Qty Received {isEditing && <span className="text-red-500">*</span>}</th>
                       <th className="text-left px-3 py-2 font-medium text-slate-600">UOM</th>
                       <th className="text-left px-3 py-2 font-medium text-slate-600">Batch No</th>
@@ -341,7 +340,6 @@ export default function ReceiptAdviceDetail() {
                             {productOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                           </select>
                         ) : (<span className="font-medium">{line.product_name || '-'}</span>)}</td>
-                        <td className="px-3 py-2 text-slate-600">{line.po_line_info || '-'}</td>
                         <td className="px-3 py-2">{isEditing ? (
                           <input type="number" step="0.01" min="0" value={line.quantity_received || ''} onChange={(e) => handleLineChange(idx, 'quantity_received', e.target.value)} className={inputClass} style={{ minWidth: '100px' }} />
                         ) : (<span className="text-right block">{line.quantity_received}</span>)}</td>
@@ -726,6 +724,12 @@ export default function ReceiptAdviceDetail() {
                 <>
                   <button onClick={handleEdit} className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700">
                     <Pencil size={14} /> Edit Receipt
+                  </button>
+                  <button onClick={() => navigate(`/purchase/freight/new?receipt_id=${id}`)} className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700">
+                    <Truck size={14} /> Create Freight
+                  </button>
+                  <button onClick={() => navigate(`/purchase/bills/new?receipt_id=${id}`)} className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">
+                    <FileText size={14} /> Create Bill
                   </button>
                   <button onClick={handleDelete} className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100">
                     <Trash2 size={14} /> Delete Receipt

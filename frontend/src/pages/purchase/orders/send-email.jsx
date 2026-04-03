@@ -8,7 +8,7 @@ import apiClient from '../../../utils/api.js';
 import { getApiErrorMessage } from '../../../utils/formHelpers.js';
 import usePermissions from '../../../hooks/usePermissions.js';
 import PermissionDenied from '../../../components/common/PermissionDenied.jsx';
-import { Eye, Send, X, Mail, Paperclip, FileText, ArrowLeft, Loader2 } from 'lucide-react';
+import { Eye, Send, X, Mail, Paperclip, FileText, ArrowLeft, Loader2, CheckCircle } from 'lucide-react';
 
 export default function SendPOEmail() {
   const { id } = useParams();
@@ -219,11 +219,15 @@ export default function SendPOEmail() {
             <button
               type="button"
               onClick={handleSendMailClick}
-              disabled={!canSend || previewLoading}
-              className="w-full px-4 py-3 bg-primary-600 text-white rounded-lg text-sm font-semibold hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
+              disabled={!canSend || previewLoading || sendResult?.success}
+              className={`w-full px-4 py-3 text-white rounded-lg text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2 ${
+                sendResult?.success ? 'bg-green-600' : 'bg-primary-600 hover:bg-primary-700'
+              }`}
             >
               {previewLoading ? (
                 <><Loader2 size={16} className="animate-spin" /> Preparing Preview...</>
+              ) : sendResult?.success ? (
+                <><CheckCircle size={16} /> Email Sent</>
               ) : (
                 <><Send size={16} /> Send Mail</>
               )}
@@ -385,7 +389,7 @@ export default function SendPOEmail() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {emailLogs.map((log, idx) => {
-                  const logStatus = log.status || (log.email_sent ? 'Sent' : 'Failed');
+                  const logStatus = log.status || (log.email_sent ? 'Email Sent' : 'Failed');
                   return (
                     <tr key={log.id || idx} className="hover:bg-slate-50">
                       <td className="py-2 px-3 font-medium text-slate-800">{log.vendor_name || log.vendor_email || po?.vendor_name || '-'}</td>

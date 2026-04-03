@@ -4,7 +4,9 @@ import MainLayout from '../../../components/layout/MainLayout';
 import PageHeader from '../../../components/common/PageHeader';
 import DataTable from '../../../components/common/DataTable';
 import StatusBadge from '../../../components/common/StatusBadge';
-import { Pencil, FileText } from 'lucide-react';
+import { Pencil, FileText, Trash2 } from 'lucide-react';
+import toast from 'react-hot-toast';
+import apiClient from '../../../utils/api.js';
 import useApiData from '../../../hooks/useApiData.js';
 import usePermissions from '../../../hooks/usePermissions.js';
 import UnifiedFilterPanel, { useUnifiedFilter } from '../components/UnifiedFilterPanel';
@@ -24,9 +26,21 @@ const FILTER_FIELDS = [
 export default function RFQList() {
   const navigate = useNavigate();
   const { canSendEmail, canCreate } = usePermissions();
-  const { data, isLoading, error } = useApiData('/api/purchase/rfq/');
+  const { data, isLoading, error, refetch } = useApiData('/api/purchase/rfq/');
   const [showFilters, setShowFilters] = useState(false);
   const filter = useUnifiedFilter(FILTER_FIELDS);
+
+  const handleDelete = async (e, row) => {
+    e.stopPropagation();
+    if (!window.confirm(`Are you sure you want to delete ${row.rfq_no}? This action cannot be undone.`)) return;
+    try {
+      await apiClient.delete(`/api/purchase/rfq/${row.id}/`);
+      toast.success(`${row.rfq_no} deleted successfully`);
+      refetch();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || err.response?.data?.error || 'Failed to delete');
+    }
+  };
 
   const columns = [
     { key: 'rfq_no', label: 'RFQ No', sortable: true },
@@ -66,7 +80,7 @@ export default function RFQList() {
           {row.email_sent && (
             <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 rounded-lg">
               <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-              Sent
+              Email Sent
             </span>
           )}
           {!row.email_sent && (
@@ -78,6 +92,9 @@ export default function RFQList() {
           <button onClick={() => navigate(`/purchase/quotes/new?rfq=${row.id}`)} className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-purple-700 bg-purple-50 rounded-lg hover:bg-purple-100 transition" title="Create Quote Response">
             <FileText size={13} />
             Quote Response
+          </button>
+          <button onClick={(e) => handleDelete(e, row)} className="p-1.5 text-red-500 hover:bg-red-50 rounded transition" title="Delete">
+            <Trash2 size={15} />
           </button>
         </div>
       ),

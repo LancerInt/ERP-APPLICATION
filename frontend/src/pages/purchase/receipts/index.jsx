@@ -4,7 +4,9 @@ import MainLayout from '../../../components/layout/MainLayout';
 import PageHeader from '../../../components/common/PageHeader';
 import DataTable from '../../../components/common/DataTable';
 import StatusBadge from '../../../components/common/StatusBadge';
-import { Pencil } from 'lucide-react';
+import { Pencil, Trash2, Truck, FileText } from 'lucide-react';
+import toast from 'react-hot-toast';
+import apiClient from '../../../utils/api.js';
 import useApiData from '../../../hooks/useApiData.js';
 import UnifiedFilterPanel, { useUnifiedFilter } from '../components/UnifiedFilterPanel';
 
@@ -24,9 +26,21 @@ const FILTER_FIELDS = [
 
 export default function ReceiptAdviceList() {
   const navigate = useNavigate();
-  const { data, isLoading, error } = useApiData('/api/purchase/receipts/');
+  const { data, isLoading, error, refetch } = useApiData('/api/purchase/receipts/');
   const [showFilters, setShowFilters] = useState(false);
   const filter = useUnifiedFilter(FILTER_FIELDS);
+
+  const handleDelete = async (e, row) => {
+    e.stopPropagation();
+    if (!window.confirm(`Are you sure you want to delete ${row.receipt_advice_no}? This action cannot be undone.`)) return;
+    try {
+      await apiClient.delete(`/api/purchase/receipts/${row.id}/`);
+      toast.success(`${row.receipt_advice_no} deleted successfully`);
+      refetch();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || err.response?.data?.error || 'Failed to delete');
+    }
+  };
 
   const columns = [
     { key: 'receipt_advice_no', label: 'Receipt No', sortable: true },
@@ -49,9 +63,11 @@ export default function ReceiptAdviceList() {
       key: 'receipt_date', label: 'Receipt Date', sortable: true,
       render: (value) => value ? new Date(value).toLocaleDateString() : '-',
     },
-    {
-      key: 'qc_status_display', label: 'QC Status',
-      render: (value) => <StatusBadge status={value || 'PENDING'} />,
+    { key: 'linked_pr_numbers', label: 'PR No', sortable: false,
+      render: (value) => {
+        if (!Array.isArray(value) || value.length === 0) return '-';
+        return value.join(', ');
+      },
     },
     { key: 'total_received', label: 'Total Qty', sortable: true },
     {
@@ -59,11 +75,31 @@ export default function ReceiptAdviceList() {
       render: (value) => <StatusBadge status={value || 'Pending'} />,
     },
     {
+      key: 'freight', label: '', sortable: false,
+      render: (_, row) => (
+        <div className="flex items-center gap-1.5">
+          <button onClick={(e) => { e.stopPropagation(); navigate(`/purchase/freight/new?receipt_id=${row.id}`); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-orange-600 text-white text-xs font-medium rounded-lg hover:bg-orange-700 transition">
+            <Truck size={13} />
+            Freight
+          </button>
+          <button onClick={(e) => { e.stopPropagation(); navigate(`/purchase/bills/new?receipt_id=${row.id}`); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white text-xs font-medium rounded-lg hover:bg-emerald-700 transition">
+            <FileText size={13} />
+            Bill
+          </button>
+        </div>
+      ),
+    },
+    {
       key: 'actions', label: '', sortable: false,
       render: (_, row) => (
-        <button onClick={(e) => { e.stopPropagation(); navigate(`/purchase/receipts/${row.id}`); }} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition" title="Edit">
-          <Pencil size={15} />
-        </button>
+        <div className="flex items-center gap-1">
+          <button onClick={(e) => { e.stopPropagation(); navigate(`/purchase/receipts/${row.id}`); }} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition" title="Edit">
+            <Pencil size={15} />
+          </button>
+          <button onClick={(e) => handleDelete(e, row)} className="p-1.5 text-red-500 hover:bg-red-50 rounded transition" title="Delete">
+            <Trash2 size={15} />
+          </button>
+        </div>
       ),
     },
   ];

@@ -4,7 +4,9 @@ import MainLayout from '../../../components/layout/MainLayout';
 import PageHeader from '../../../components/common/PageHeader';
 import DataTable from '../../../components/common/DataTable';
 import StatusBadge from '../../../components/common/StatusBadge';
-import { Pencil } from 'lucide-react';
+import { Pencil, PackageCheck, Trash2 } from 'lucide-react';
+import toast from 'react-hot-toast';
+import apiClient from '../../../utils/api.js';
 import useApiData from '../../../hooks/useApiData.js';
 import usePermissions from '../../../hooks/usePermissions.js';
 import UnifiedFilterPanel, { useUnifiedFilter } from '../components/UnifiedFilterPanel';
@@ -24,10 +26,22 @@ const FILTER_FIELDS = [
 
 export default function PurchaseOrderList() {
   const navigate = useNavigate();
-  const { data, isLoading, error } = useApiData('/api/purchase/orders/');
+  const { data, isLoading, error, refetch } = useApiData('/api/purchase/orders/');
   const { canCreate } = usePermissions();
   const [showFilters, setShowFilters] = useState(false);
   const filter = useUnifiedFilter(FILTER_FIELDS);
+
+  const handleDelete = async (e, row) => {
+    e.stopPropagation();
+    if (!window.confirm(`Are you sure you want to delete ${row.po_no}? This action cannot be undone.`)) return;
+    try {
+      await apiClient.delete(`/api/purchase/orders/${row.id}/`);
+      toast.success(`${row.po_no} deleted successfully`);
+      refetch();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || err.response?.data?.error || 'Failed to delete');
+    }
+  };
 
   const columns = [
     { key: 'po_no', label: 'PO Number', sortable: true },
@@ -49,11 +63,27 @@ export default function PurchaseOrderList() {
     { key: 'total_order_value', label: 'Amount', sortable: true, render: (value) => value ? `₹${Number(value).toLocaleString()}` : '₹0' },
     { key: 'status', label: 'Status', sortable: true, render: (value) => <StatusBadge status={value} /> },
     {
+      key: 'receipt', label: '', sortable: false,
+      render: (_, row) => (
+        (row.status === 'APPROVED' || row.status === 'ISSUED') && !row.is_fully_received ? (
+          <button onClick={(e) => { e.stopPropagation(); navigate(`/purchase/receipts/new?po_id=${row.id}`); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700 transition">
+            <PackageCheck size={13} />
+            Receipt
+          </button>
+        ) : null
+      ),
+    },
+    {
       key: 'actions', label: '', sortable: false,
       render: (_, row) => (
-        <button onClick={(e) => { e.stopPropagation(); navigate(`/purchase/orders/${row.id}`); }} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition" title="Edit">
-          <Pencil size={15} />
-        </button>
+        <div className="flex items-center gap-1">
+          <button onClick={(e) => { e.stopPropagation(); navigate(`/purchase/orders/${row.id}`); }} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition" title="Edit">
+            <Pencil size={15} />
+          </button>
+          <button onClick={(e) => handleDelete(e, row)} className="p-1.5 text-red-500 hover:bg-red-50 rounded transition" title="Delete">
+            <Trash2 size={15} />
+          </button>
+        </div>
       ),
     },
   ];

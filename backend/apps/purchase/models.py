@@ -1975,6 +1975,8 @@ class PaymentMade(BaseModel):
         ('UPI', _('UPI')),
         ('NEFT', _('NEFT')),
         ('RTGS', _('RTGS')),
+        ('ADVANCE', _('Advance')),
+        ('CREDIT', _('Credit')),
     )
     PAYMENT_STATUS_CHOICES = (
         ('DRAFT', _('Draft')),

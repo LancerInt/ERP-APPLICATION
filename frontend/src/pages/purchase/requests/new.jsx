@@ -16,7 +16,6 @@ export default function CreatePurchaseRequest() {
   const [selectedCompany, setSelectedCompany] = useState('');
   const { options: companyOptions } = useLookup('/api/companies/');
   const { options: productOptions, raw: productList } = useLookup('/api/products/');
-  const { options: vendorOptions } = useLookup('/api/vendors/');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState([]);
   const [allowRfqSkip, setAllowRfqSkip] = useState(false);
@@ -234,23 +233,6 @@ export default function CreatePurchaseRequest() {
               <label className="block text-sm font-medium text-slate-700 mb-1">Required By Date</label>
               <input type="date" name="required_by_date" value={formData.required_by_date} onChange={handleChange} className={inputClass} />
             </div>
-            {allowRfqSkip && (
-              <div>
-                <label className="block text-sm font-medium text-amber-700 mb-1">
-                  Vendor <span className="text-red-500">*</span>
-                  <span className="text-xs text-amber-500 font-normal ml-1">(for direct PO)</span>
-                </label>
-                <select
-                  value={preferredVendor}
-                  onChange={(e) => setPreferredVendor(e.target.value)}
-                  required
-                  className="w-full px-3 py-2 border border-amber-300 bg-amber-50 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-                >
-                  <option value="">Select Vendor</option>
-                  {vendorOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              </div>
-            )}
             <div className="md:col-span-2 lg:col-span-3">
               <label className="block text-sm font-medium text-slate-700 mb-1">Justification</label>
               <textarea name="justification" value={formData.justification} onChange={handleChange} rows={2} className={inputClass} placeholder="Reason for this purchase request..." />
@@ -323,6 +305,53 @@ export default function CreatePurchaseRequest() {
             <div className="text-center py-6 text-slate-400">No line items. Click "Add Item" to begin.</div>
           )}
         </div>
+
+        {/* Vendor Selection — only when RFQ Skip is enabled, shown after line items */}
+        {allowRfqSkip && (
+          <div className="bg-amber-50 rounded-lg border-2 border-amber-300 p-6">
+            <h3 className="text-lg font-semibold text-amber-800 mb-4 pb-2 border-b border-amber-200">
+              Vendor <span className="text-xs text-amber-500 font-normal ml-1">(for direct PO)</span>
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-amber-700 mb-1">
+                  Select Vendor <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={preferredVendor}
+                  onChange={(e) => setPreferredVendor(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 border border-amber-300 bg-white rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                >
+                  <option value="">Select Vendor</option>
+                  {(() => {
+                    // Collect preferred vendors from selected products
+                    const selectedProductIds = lineItems.map(l => l.product).filter(Boolean);
+                    const vendorMap = new Map();
+                    selectedProductIds.forEach(pid => {
+                      const product = productList.find(p => String(p.id) === String(pid));
+                      if (product?.preferred_vendors_detail) {
+                        product.preferred_vendors_detail.forEach(v => {
+                          vendorMap.set(v.id, v);
+                        });
+                      }
+                    });
+                    const vendors = Array.from(vendorMap.values());
+                    if (vendors.length === 0) {
+                      return <option value="" disabled>No preferred vendors found for selected products</option>;
+                    }
+                    return vendors.map(v => (
+                      <option key={v.id} value={v.id}>{v.vendor_name}</option>
+                    ));
+                  })()}
+                </select>
+                {lineItems.every(l => !l.product) && (
+                  <p className="text-xs text-amber-600 mt-1">Select products in line items first to see preferred vendors.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         <FileAttachments module="PR" recordId={null} onPendingChange={setPendingAttachments} />
 

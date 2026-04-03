@@ -61,6 +61,19 @@ export default function QuoteResponseList() {
     { key: 'total_cost', label: 'Total', sortable: true, render: (value) => value ? `₹${Number(value).toLocaleString()}` : '-' },
     { key: 'chosen_flag', label: 'Chosen', render: (value) => value ? <span className="text-green-600 font-semibold">Yes</span> : <span className="text-slate-400">No</span> },
     {
+      key: 'evaluate', label: '', sortable: false,
+      render: (_, row) => {
+        const prId = Array.isArray(row.pr_ids) && row.pr_ids.length > 0 ? row.pr_ids[0] : '';
+        if (!prId) return null;
+        return (
+          <button onClick={(e) => { e.stopPropagation(); navigate(`/purchase/evaluations?pr_id=${prId}`); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 text-white text-xs font-medium rounded-lg hover:bg-violet-700 transition">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/></svg>
+            Evaluate
+          </button>
+        );
+      },
+    },
+    {
       key: 'actions', label: 'Actions', sortable: false,
       render: (value, row) => (
         <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>

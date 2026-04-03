@@ -36,6 +36,7 @@ class Product(BaseModel):
         ('CUM', 'Cubic Meter'),
         ('BOX', 'Box'),
         ('PACK', 'Pack'),
+        ('MTS', 'Metric Ton'),
     )
 
     QC_RESPONSIBILITY_CHOICES = (

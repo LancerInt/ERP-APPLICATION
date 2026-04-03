@@ -192,19 +192,28 @@ export default function CreateQuoteResponse() {
 
   // Auto-fill from RFQ when navigating from RFQ detail page (?rfq=UUID)
   const [rfqAutoFilled, setRfqAutoFilled] = useState(false);
+  const [prefillRfqNo, setPrefillRfqNo] = useState('');
+
+  // Fetch RFQ number immediately (before rfqRaw loads) to show in read-only field
+  useEffect(() => {
+    if (!rfqFromUrl || prefillRfqNo) return;
+    setFormData(prev => ({ ...prev, rfq: rfqFromUrl }));
+    apiClient.get(`/api/purchase/rfq/${rfqFromUrl}/`).then(res => {
+      setPrefillRfqNo(res.data.rfq_no || '');
+    }).catch(() => {});
+  }, [rfqFromUrl]);
+
   useEffect(() => {
     if (!rfqFromUrl || isEditMode || rfqAutoFilled) return;
-    // Wait for rfqOptions to load before setting the value
     if (rfqRaw.length === 0) return;
 
-    // Set RFQ field immediately
     setFormData(prev => ({ ...prev, rfq: rfqFromUrl }));
     setRfqAutoFilled(true);
 
     // Fetch RFQ details to get vendor and line items
     apiClient.get(`/api/purchase/rfq/${rfqFromUrl}/`).then(res => {
       const rfq = res.data;
-      // Auto-fill vendor if vendors are linked
+      if (!prefillRfqNo) setPrefillRfqNo(rfq.rfq_no || '');
       const vendorId = rfq.vendors?.length > 0 ? rfq.vendors[0] : '';
       setFormData(prev => ({
         ...prev,
@@ -1046,17 +1055,20 @@ export default function CreateQuoteResponse() {
                   <AutoFillDot confidence={autoFilledFields.rfq} />
                   {fieldSources.rfq && <SourceTooltip text={fieldSources.rfq} />}
                 </label>
-                <select name="rfq" value={formData.rfq} onChange={handleRfqChange} required className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
-                  <option value="">Select RFQ</option>
-                  {(() => {
-                    const opts = isEditMode ? rfqOptions : filteredRfqOptions;
-                    // If in edit mode and the current RFQ isn't in options yet, add it
-                    if (editRfqOption && !opts.find(o => o.value === editRfqOption.value)) {
-                      return [editRfqOption, ...opts].map(o => <option key={o.value} value={o.value}>{o.label}</option>);
-                    }
-                    return opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>);
-                  })()}
-                </select>
+                {rfqFromUrl && formData.rfq ? (
+                  <input type="text" readOnly value={prefillRfqNo || rfqRaw.find(r => r.id === formData.rfq)?.rfq_no || 'Loading...'} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-slate-50 cursor-not-allowed" />
+                ) : (
+                  <select name="rfq" value={formData.rfq} onChange={handleRfqChange} required className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                    <option value="">Select RFQ</option>
+                    {(() => {
+                      const opts = isEditMode ? rfqOptions : filteredRfqOptions;
+                      if (editRfqOption && !opts.find(o => o.value === editRfqOption.value)) {
+                        return [editRfqOption, ...opts].map(o => <option key={o.value} value={o.value}>{o.label}</option>);
+                      }
+                      return opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>);
+                    })()}
+                  </select>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center">

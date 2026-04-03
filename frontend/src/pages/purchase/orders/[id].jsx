@@ -10,6 +10,7 @@ import {
   FileText,
   Edit3,
   Trash2,
+  PackageCheck,
 } from 'lucide-react';
 import MainLayout from '../../../components/layout/MainLayout';
 import StatusBadge from '../../../components/common/StatusBadge';
@@ -92,7 +93,7 @@ export default function PurchaseOrderDetail() {
   const canApprovePO = isDraft && hasEditPerm;
   const canIssuePO = isApproved && hasEditPerm;
   const canRejectPO = (isDraft || isApproved) && hasEditPerm && !isCancelled;
-  const canSendEmail = (isApproved || isIssued) && !isCancelled && !isClosed && !po?.email_sent;
+  const canSendEmail = (isApproved || isIssued) && !isCancelled && !isClosed;
 
   // Handle approve
   const handleApprove = async () => {
@@ -294,6 +295,17 @@ export default function PurchaseOrderDetail() {
                 <CheckCircle size={16} />
                 Email Sent
               </span>
+            )}
+
+            {/* Receipt button — for APPROVED or ISSUED POs that are not fully received */}
+            {(isApproved || isIssued) && !po?.is_fully_received && (
+              <button
+                onClick={() => navigate(`/purchase/receipts/new?po_id=${id}`)}
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm font-medium"
+              >
+                <PackageCheck size={16} />
+                Receipt
+              </button>
             )}
 
             {/* Reject button removed */}

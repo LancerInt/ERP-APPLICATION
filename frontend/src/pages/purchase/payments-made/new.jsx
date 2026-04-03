@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import MainLayout from '../../../components/layout/MainLayout';
 import PageHeader from '../../../components/common/PageHeader';
@@ -10,6 +10,7 @@ import FileAttachments, { uploadPendingFiles } from '../components/FileAttachmen
 
 export default function CreatePaymentMade() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { options: vendorOptions } = useLookup('/api/vendors/');
   const { raw: billsRaw } = useLookup('/api/purchase/bills/');
 
@@ -40,6 +41,22 @@ export default function CreatePaymentMade() {
   }));
 
   const selectedBill = billOptions.find(b => b.value === formData.bill);
+
+  // Auto-fill from bill_id query param
+  useEffect(() => {
+    const billId = searchParams.get('bill_id');
+    if (!billId || formData.bill === billId || billsRaw.length === 0) return;
+
+    const bill = billsRaw.find(b => String(b.id) === String(billId));
+    if (!bill) return;
+
+    setFormData(prev => ({
+      ...prev,
+      bill: bill.id,
+      vendor: bill.vendor || prev.vendor,
+      amount: bill.balance_due ? String(bill.balance_due) : '',
+    }));
+  }, [searchParams, billsRaw]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -105,10 +122,14 @@ export default function CreatePaymentMade() {
               </div>
               <div>
                 <label className={labelClass}>Bill</label>
-                <select name="bill" value={formData.bill} onChange={handleChange} className={inputClass}>
-                  <option value="">Select Bill (optional)</option>
-                  {billOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
+                {searchParams.get('bill_id') && formData.bill ? (
+                  <input type="text" readOnly value={billsRaw.find(b => String(b.id) === String(formData.bill))?.bill_no || formData.bill} className={`${inputClass} bg-slate-50 cursor-not-allowed`} />
+                ) : (
+                  <select name="bill" value={formData.bill} onChange={handleChange} className={inputClass}>
+                    <option value="">Select Bill (optional)</option>
+                    {billOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                )}
               </div>
               <div>
                 <label className={labelClass}>Payment Date <span className="text-red-500">*</span></label>

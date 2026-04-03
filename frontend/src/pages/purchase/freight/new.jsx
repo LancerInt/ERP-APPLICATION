@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { Plus, Trash2 } from 'lucide-react';
 import MainLayout from '../../../components/layout/MainLayout';
@@ -11,6 +11,7 @@ import FileAttachments, { uploadPendingFiles } from '../components/FileAttachmen
 
 export default function CreateFreightAdviceInbound() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { options: transporterOptions } = useLookup('/api/transporters/');
   const { raw: receiptRaw } = useLookup('/api/purchase/receipts/');
   const { raw: existingFreightRaw } = useLookup('/api/purchase/freight/');
@@ -34,7 +35,7 @@ export default function CreateFreightAdviceInbound() {
     })
     .map(r => ({
       value: r.id,
-      label: `${r.receipt_advice_no} — ${r.vendor_name || ''} (${r.warehouse_name || ''})`,
+      label: r.receipt_advice_no,
     }));
   const { options: productOptions } = useLookup('/api/products/');
   const [isLoading, setIsLoading] = useState(false);
@@ -76,6 +77,55 @@ export default function CreateFreightAdviceInbound() {
     delivery_remarks: '',
     remarks: '',
   });
+
+  // Auto-fill from receipt_id query param when redirected from Receipt page
+  useEffect(() => {
+    const receiptId = searchParams.get('receipt_id');
+    if (!receiptId || formData.receipt_advice === receiptId) return;
+
+    setFormData(prev => ({ ...prev, receipt_advice: receiptId }));
+
+    apiClient.get(`/api/purchase/receipts/${receiptId}/`)
+      .then(res => {
+        const r = res.data;
+        setReceiptData(r);
+
+        const freightDetail = (r.freight_details || [])[0] || {};
+        setFormData(prev => ({
+          ...prev,
+          receipt_advice: receiptId,
+          lorry_no: r.vehicle_number || freightDetail.lorry_no || '',
+          driver_name: r.driver_name || '',
+          driver_contact: '',
+          destination_state: freightDetail.destination_state || '',
+          freight_terms: freightDetail.freight_terms || '',
+          freight_type: freightDetail.freight_type || prev.freight_type,
+          base_amount: freightDetail.tentative_charge || prev.base_amount,
+          transporter: freightDetail.transporter || prev.transporter,
+          quantity_basis: r.total_received || '',
+          quantity_uom: (r.receipt_lines || [])[0]?.uom || prev.quantity_uom,
+          mmul_less: '0',
+          tds_less: '0',
+          less_amount: '0',
+          remarks: r.remarks || '',
+        }));
+
+        const receiptLines = r.receipt_lines || [];
+        if (receiptLines.length > 0) {
+          setLineItems(receiptLines.map(l => ({
+            product: l.product || '',
+            product_name: l.product_name || '',
+            quantity: l.quantity_received || '',
+            uom: l.uom || 'KG',
+            batch_no: l.batch_no || '',
+            rate: '',
+            freight_amount: '',
+            remarks: '',
+          })));
+        }
+      })
+      .catch(() => { setReceiptData(null); setLineItems([]); });
+  }, [searchParams]);
 
   // Auto-fill from receipt advice when selected
   const handleReceiptChange = (e) => {
@@ -210,10 +260,14 @@ export default function CreateFreightAdviceInbound() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
                 <label className={labelClass}>Receipt Advice <span className="text-red-500">*</span></label>
-                <select name="receipt_advice" value={formData.receipt_advice} onChange={handleReceiptChange} required className={inputClass}>
-                  <option value="">Select Receipt Advice</option>
-                  {receiptOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
+                {searchParams.get('receipt_id') && formData.receipt_advice ? (
+                  <input type="text" readOnly value={receiptData?.receipt_advice_no || formData.receipt_advice} className={`${inputClass} bg-slate-50 cursor-not-allowed`} />
+                ) : (
+                  <select name="receipt_advice" value={formData.receipt_advice} onChange={handleReceiptChange} required className={inputClass}>
+                    <option value="">Select Receipt Advice</option>
+                    {receiptOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                )}
               </div>
               <div>
                 <label className={labelClass}>Status</label>
@@ -419,7 +473,7 @@ export default function CreateFreightAdviceInbound() {
               </div>
               <div>
                 <label className={labelClass}>Discounted Amount</label>
-                <input type="text" readOnly value={`₹${discountedBase.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`} className={`${inputClass} bg-slate-50 cursor-not-allowed`} />
+                <input type="text" readOnly value={discountPct > 0 ? `₹${discountedBase.toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '-'} className={`${inputClass} bg-slate-50 cursor-not-allowed`} />
               </div>
               <div>
                 <label className={labelClass}>Mmul Less</label>

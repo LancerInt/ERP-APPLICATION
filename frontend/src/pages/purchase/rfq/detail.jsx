@@ -267,7 +267,7 @@ export default function RFQDetailPage() {
                   {emailLogs.map(log => (
                     <div key={log.id} className={`p-3 rounded-lg border text-xs ${log.email_sent ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
                       <div className="font-medium">{log.vendor_email}</div>
-                      <div className="flex justify-between mt-1"><span className={log.email_sent ? 'text-green-700' : 'text-red-700'}>{log.email_sent ? 'Sent' : 'Failed'}</span><span className="text-slate-400">{formatDateTime(log.sent_at || log.created_at)}</span></div>
+                      <div className="flex justify-between mt-1"><span className={log.email_sent ? 'text-green-700' : 'text-red-700'}>{log.email_sent ? 'Email Sent' : 'Failed'}</span><span className="text-slate-400">{formatDateTime(log.sent_at || log.created_at)}</span></div>
                     </div>
                   ))}
                 </div>

@@ -218,6 +218,16 @@ export default function PaymentMadeDetail() {
               <div className="flex items-center gap-3">
                 <h2 className="text-xl font-bold text-slate-900">{payment.payment_no}</h2>
                 <StatusBadge status={payment.status_display || payment.status} />
+                {payment.payment_mode === 'ADVANCE' && (
+                  <span className="px-3 py-1 text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-200 rounded-full">
+                    Paid via Advance
+                  </span>
+                )}
+                {payment.payment_mode === 'CREDIT' && (
+                  <span className="px-3 py-1 text-xs font-semibold bg-purple-100 text-purple-700 border border-purple-200 rounded-full">
+                    Paid via Credit
+                  </span>
+                )}
               </div>
               <div className="flex gap-2">
                 {isDraft && !isEditing && (

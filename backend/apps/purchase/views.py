@@ -223,7 +223,10 @@ class PurchaseRequestViewSet(viewsets.ModelViewSet):
             pr.approved_at = timezone.now()
             pr.save(update_fields=['approval_status', 'approved_by', 'approved_at'])
 
-            # Approve lines if service is available and user has stakeholder profile
+            # Approve all lines
+            pr.lines.update(status='APPROVED')
+
+            # Line-level approval via service (partial approval, trail logging)
             try:
                 stakeholder = getattr(request.user, 'stakeholder_user', None)
                 if stakeholder:
@@ -235,7 +238,7 @@ class PurchaseRequestViewSet(viewsets.ModelViewSet):
                         approved_line_quantities=approved_lines, remarks=remarks
                     )
             except Exception:
-                pass  # Line-level approval is optional
+                pass
 
             # If allow_rfq_skip, create PO directly instead of RFQ
             if pr.allow_rfq_skip:
@@ -1565,6 +1568,8 @@ class VendorCreditViewSet(viewsets.ModelViewSet):
         if amount > bill.balance_due:
             return Response({'error': f'Amount exceeds bill balance ({bill.balance_due}).'}, status=status.HTTP_400_BAD_REQUEST)
 
+        from .models import PaymentMade
+
         with transaction.atomic():
             credit.amount_applied = credit.amount_applied + amount
             if credit.amount_applied >= credit.total_amount:
@@ -1580,6 +1585,20 @@ class VendorCreditViewSet(viewsets.ModelViewSet):
             elif bill.amount_paid > 0:
                 bill.status = 'PARTIALLY_PAID'
             bill.save(update_fields=['amount_paid', 'status'])
+
+            # Create PaymentMade record for tracking
+            credit_type_label = credit.get_credit_type_display()
+            payment_mode = 'ADVANCE' if credit.credit_type == 'ADVANCE' else 'CREDIT'
+            PaymentMade.objects.create(
+                vendor=bill.vendor,
+                payment_date=timezone.now().date(),
+                payment_mode=payment_mode,
+                amount=amount,
+                reference_no=credit.credit_no,
+                bill=bill,
+                status='APPROVED',
+                notes=f'{credit_type_label} {credit.credit_no} applied to {bill.bill_no}',
+            )
 
         return Response(self.get_serializer(credit).data)
 
@@ -1618,7 +1637,7 @@ class VendorCreditViewSet(viewsets.ModelViewSet):
         from .models import VendorCredit
         credits = VendorCredit.objects.filter(
             vendor_id=vendor_id,
-            status__in=['OPEN'],
+            status__in=['DRAFT', 'OPEN'],
         )
         data = []
         for c in credits:
