@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Eye, Trash2, Filter, Settings2, GitBranch } from 'lucide-react';
+import { Plus, Eye, Pencil, Trash2, Filter, Settings2, GitBranch, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import MainLayout from '../../../components/layout/MainLayout';
 import DataTable from '../../../components/common/DataTable';
@@ -14,7 +14,7 @@ import { useFlowDashboard } from '../../../components/common/FlowDashboardPopup'
 
 export default function FreightPaymentsList() {
   const navigate = useNavigate();
-  const { canCreate, canDelete } = usePermissions();
+  const { canCreate, canEdit, canDelete } = usePermissions();
   const { data, isLoading, error, refetch } = useApiData('/api/sales/freight-payments/');
   const [page, setPage] = useState(1);
   const [sortBy, setSortBy] = useState('payment_date');
@@ -60,6 +60,7 @@ export default function FreightPaymentsList() {
 
   const columns = [
     { field: 'advice_no', header: 'Freight No', sortable: true, width: '160px', render: (v, row) => <Link to={`/sales/freight/${row.freight_id}`}>{v}</Link> },
+    { field: 'transporter_name', header: 'Transporter', sortable: true, width: '150px' },
     { field: 'customer_name', header: 'Customer', sortable: true, width: '150px' },
     { field: 'payment_date', header: 'Payment Date', sortable: true, width: '120px', render: (v) => fmtDate(v) },
     { field: 'amount_paid', header: 'Amount', sortable: true, width: '120px', render: (v) => <span className="font-semibold text-green-700">{fmt(v)}</span> },
@@ -68,11 +69,15 @@ export default function FreightPaymentsList() {
     { field: 'remarks', header: 'Remarks', sortable: false, width: '160px', render: (v) => v || '-' },
     { field: 'created_by_name', header: 'Created By', sortable: true, width: '120px' },
     { field: 'created_at', header: 'Created', sortable: true, width: '120px', render: (v) => fmtDate(v) },
-    { field: 'actions', header: 'Actions', sortable: false, width: '80px',
+    { field: 'actions', header: 'Actions', sortable: false, width: '120px',
       render: (_, row) => (
         <div className="flex items-center gap-1">
           <button onClick={(e) => { e.stopPropagation(); navigate(`/sales/freight-payments/${row.id}`); }}
             className="p-1.5 text-blue-600 hover:bg-blue-50 rounded" title="View"><Eye size={15} /></button>
+          {canEdit('Freight Advice') && (
+            <button onClick={(e) => { e.stopPropagation(); navigate(`/sales/freight-payments/${row.id}/edit`); }}
+              className="p-1.5 text-amber-600 hover:bg-amber-50 rounded" title="Edit"><Pencil size={15} /></button>
+          )}
           {canDelete('Freight Advice') && (
             <button onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }}
               className="p-1.5 text-red-500 hover:bg-red-50 rounded" title="Delete"><Trash2 size={15} /></button>
@@ -109,6 +114,7 @@ export default function FreightPaymentsList() {
             </button>
             <button onClick={() => setShowConfig(true)} className="flex items-center gap-2 px-4 py-3 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition"><Settings2 size={18} /> Fields</button>
             <button onClick={() => navigate('/sales/flow')} className="flex items-center gap-2 px-4 py-3 border border-purple-300 rounded-lg text-sm font-medium text-purple-700 hover:bg-purple-50 transition"><GitBranch size={18} /> Flow</button>
+            <button onClick={() => navigate('/sales/freight-payments/statement')} className="flex items-center gap-2 px-4 py-3 border border-emerald-300 rounded-lg text-sm font-medium text-emerald-700 hover:bg-emerald-50 transition"><FileText size={18} /> Statement</button>
             {canCreate('Freight Advice') && (
               <button onClick={() => navigate('/sales/freight-payments/new')} className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"><Plus size={20} /> Record Payment</button>
             )}

@@ -158,11 +158,12 @@ class CreateCustomerPOSerializer(serializers.ModelSerializer):
             'dispatched_through', 'consignee_name', 'consignee_address', 'consignee_gstin',
             'billing_address', 'billing_gstin',
             'special_instructions',
-            'remarks', 'po_file', 'po_lines',
+            'remarks', 'po_file', 'po_lines', 'status',
         ]
         read_only_fields = ['id']
         extra_kwargs = {
             'upload_id': {'required': False, 'allow_blank': True},
+            'status': {'required': False},
             'company': {'required': False, 'allow_null': True},
             'warehouse': {'required': False, 'allow_null': True},
             'price_list': {'required': False, 'allow_null': True},
@@ -1015,16 +1016,17 @@ class FreightPaymentListSerializer(serializers.ModelSerializer):
     )
     advice_no = serializers.CharField(source='freight.advice_no', read_only=True, default='')
     customer_name = serializers.CharField(source='freight.customer_name', read_only=True, default='')
+    transporter_name = serializers.CharField(source='freight.transporter.name', read_only=True, default='')
     freight_id = serializers.UUIDField(source='freight.id', read_only=True)
 
     class Meta:
         model = FreightPayment
         fields = [
-            'id', 'freight', 'freight_id', 'advice_no', 'customer_name',
+            'id', 'freight', 'freight_id', 'advice_no', 'customer_name', 'transporter_name',
             'payment_date', 'amount_paid', 'payment_mode',
             'reference_no', 'remarks', 'created_by_name', 'created_at',
         ]
-        read_only_fields = ['id', 'created_at', 'created_by_name', 'advice_no', 'customer_name', 'freight_id']
+        read_only_fields = ['id', 'created_at', 'created_by_name', 'advice_no', 'customer_name', 'transporter_name', 'freight_id']
 
 
 class FreightAttachmentSerializer(serializers.ModelSerializer):
@@ -1039,14 +1041,13 @@ class FreightAttachmentSerializer(serializers.ModelSerializer):
 
 class FreightAdviceOutboundListSerializer(serializers.ModelSerializer):
     transporter_name = serializers.CharField(source='transporter.name', read_only=True, default='')
-    company_name = serializers.CharField(source='dispatch_challan.warehouse.company.legal_name', read_only=True, default='')
     dc_count = serializers.SerializerMethodField()
 
     class Meta:
         model = FreightAdviceOutbound
         fields = [
             'id', 'advice_no', 'freight_detail', 'freight_date', 'invoice_date', 'customer_name',
-            'transporter', 'transporter_name', 'company_name',
+            'transporter', 'transporter_name',
             'shipment_quantity', 'lorry_no', 'destination',
             'base_amount', 'freight_per_ton',
             'unloading_charges', 'unloading_wages_amount',
@@ -1061,8 +1062,6 @@ class FreightAdviceOutboundListSerializer(serializers.ModelSerializer):
 
 class FreightAdviceOutboundDetailSerializer(serializers.ModelSerializer):
     transporter_name = serializers.CharField(source='transporter.name', read_only=True, default='')
-    company_name = serializers.CharField(source='dispatch_challan.warehouse.company.legal_name', read_only=True, default='')
-    factory_name = serializers.CharField(source='dispatch_challan.warehouse.name', read_only=True, default='')
     created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True, default='')
     dc_links = FreightDCLinkSerializer(many=True, read_only=True)
     payments = FreightPaymentSerializer(many=True, read_only=True)
@@ -1072,8 +1071,8 @@ class FreightAdviceOutboundDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = FreightAdviceOutbound
         fields = [
-            'id', 'advice_no', 'freight_detail', 'direction', 'dispatch_challan', 'transporter',
-            'transporter_name', 'company_name', 'factory_name',
+            'id', 'advice_no', 'freight_detail', 'direction', 'transporter',
+            'transporter_name',
             'freight_type', 'created_by', 'created_by_name', 'created_date',
             'freight_date', 'invoice_date', 'customer_name', 'lorry_no', 'destination',
             'shipment_quantity', 'quantity_uom',
@@ -1106,7 +1105,7 @@ class CreateUpdateFreightSerializer(serializers.ModelSerializer):
     class Meta:
         model = FreightAdviceOutbound
         fields = [
-            'advice_no', 'freight_detail', 'dispatch_challan', 'transporter', 'freight_type',
+            'advice_no', 'freight_detail', 'transporter', 'freight_type',
             'freight_date', 'invoice_date', 'customer_name', 'lorry_no', 'destination',
             'shipment_quantity', 'quantity_uom',
             'base_amount', 'unloading_wages_amount',
@@ -1117,7 +1116,6 @@ class CreateUpdateFreightSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'advice_no': {'required': False, 'allow_blank': True},
             'freight_detail': {'required': False, 'allow_null': True},
-            'dispatch_challan': {'required': False, 'allow_null': True},
             'transporter': {'required': False, 'allow_null': True},
             'freight_type': {'required': False, 'allow_blank': True},
             'freight_date': {'required': False, 'allow_null': True},

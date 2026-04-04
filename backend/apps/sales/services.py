@@ -554,7 +554,6 @@ class FreightService:
 
         advice = FreightAdviceOutbound.objects.create(
             advice_no=FreightService._generate_advice_number(),
-            dispatch_challan=dc,
             transporter=transporter,
             freight_type=freight_type,
             created_by=created_by,

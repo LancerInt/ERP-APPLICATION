@@ -123,7 +123,7 @@ class FreightAdviceOutboundFilter(filters.FilterSet):
 
     class Meta:
         model = FreightAdviceOutbound
-        fields = ['status', 'freight_type', 'transporter', 'dispatch_challan']
+        fields = ['status', 'freight_type', 'transporter']
 
 
 class ReceivableLedgerFilter(filters.FilterSet):

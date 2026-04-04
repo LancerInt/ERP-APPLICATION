@@ -5,6 +5,7 @@ import { ArrowLeft, Edit3, Trash2, FileText } from 'lucide-react';
 import MainLayout from '../../../components/layout/MainLayout';
 import StatusBadge from '../../../components/common/StatusBadge';
 import apiClient from '../../../utils/api.js';
+import { formatAddressDisplay } from '../../../components/common/AddressField';
 import usePermissions from '../../../hooks/usePermissions.js';
 
 export default function SalesInvoiceDetail() {
@@ -166,7 +167,7 @@ export default function SalesInvoiceDetail() {
               <div className="p-4 border-r border-slate-300">
                 <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Consignee (Ship To)</p>
                 <p className="font-semibold text-slate-800">{inv.consignee_name || '-'}</p>
-                <p className="text-sm text-slate-600">{inv.consignee_address || ''}</p>
+                <p className="text-sm text-slate-600">{formatAddressDisplay(inv.consignee_address) || ''}</p>
                 <p className="text-sm text-slate-600">GSTIN: {inv.consignee_gstin || '-'}</p>
                 <p className="text-sm text-slate-600">State: {inv.consignee_state || '-'} ({inv.consignee_state_code || '-'})</p>
               </div>
@@ -207,7 +208,7 @@ export default function SalesInvoiceDetail() {
             <div className="p-4 border-b border-slate-300">
               <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Buyer (Bill To)</p>
               <p className="font-semibold text-slate-800">{inv.buyer_name || inv.customer_name || '-'}</p>
-              <p className="text-sm text-slate-600">{inv.buyer_address || ''}</p>
+              <p className="text-sm text-slate-600">{formatAddressDisplay(inv.buyer_address) || ''}</p>
               <p className="text-sm text-slate-600">GSTIN: {inv.buyer_gstin || '-'}</p>
               <p className="text-sm text-slate-600">State: {inv.buyer_state || '-'} ({inv.buyer_state_code || '-'})</p>
             </div>

@@ -7,6 +7,20 @@ import PageHeader from '../../../components/common/PageHeader';
 import apiClient from '../../../utils/api.js';
 import { cleanFormData, getApiErrorMessage } from '../../../utils/formHelpers.js';
 import useLookup from '../../../hooks/useLookup.js';
+import AddressField, { parseAddress, getDistrictState, formatAddressDisplay } from '../../../components/common/AddressField';
+
+const DISPATCHED_THROUGH_OPTIONS = [
+  { value: '', label: 'Select' },
+  { value: 'BY_ROAD', label: 'By Road' },
+  { value: 'BY_RAIL', label: 'By Rail' },
+  { value: 'BY_AIR', label: 'By Air' },
+  { value: 'BY_SEA', label: 'By Sea' },
+  { value: 'BY_COURIER', label: 'By Courier' },
+  { value: 'HAND_DELIVERY', label: 'Hand Delivery' },
+  { value: 'SELF_PICKUP', label: 'Self Pickup' },
+  { value: 'TRANSPORTER', label: 'Transporter' },
+  { value: 'OTHER', label: 'Other' },
+];
 
 const inputClass = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500';
 const errorInputClass = 'w-full border border-red-400 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500';
@@ -48,6 +62,9 @@ export default function CreateSalesOrder() {
   // Customer PO states
   const [availablePOs, setAvailablePOs] = useState([]);
   const [selectedPOIds, setSelectedPOIds] = useState([]);
+  // All shipping addresses from CPO for user to choose
+  const [cpoShippingAddresses, setCpoShippingAddresses] = useState([]);
+  const [cpoAllBillingAddresses, setCpoAllBillingAddresses] = useState([]);
 
   const [formData, setFormData] = useState({
     so_no: '',
@@ -121,8 +138,7 @@ export default function CreateSalesOrder() {
       .then(res => {
         const list = res.data?.results || res.data || [];
         setAvailablePOs(list.filter(p =>
-          p.status !== 'CANCELLED' &&
-          p.status !== 'CONVERTED' &&
+          p.status === 'CONFIRMED' &&
           (!p.linked_sos || p.linked_sos.length === 0) &&
           !p.linked_so_number
         ).map(p => ({ value: p.id, label: `${p.upload_id}${p.po_number ? ` (${p.po_number})` : ''}`, raw: p })));
@@ -161,6 +177,28 @@ export default function CreateSalesOrder() {
 
       // Auto-fill header from first PO (or merge)
       if (selectedPOIds.length === 0) {
+        // Parse all shipping addresses from CPO
+        const shipNames = (po.consignee_name || '').split(' | ').filter(Boolean);
+        const shipAddrs = (po.consignee_address || '').split(' | ').filter(Boolean);
+        const shipGstins = (po.consignee_gstin || '').split(' | ').filter(Boolean);
+        const maxShip = Math.max(shipNames.length, shipAddrs.length, shipGstins.length, 1);
+        const allShip = Array.from({ length: maxShip }, (_, i) => ({
+          name: shipNames[i] || '', address: shipAddrs[i] || '', gstin: shipGstins[i] || '',
+        }));
+        setCpoShippingAddresses(allShip);
+
+        // Parse all billing addresses
+        const billAddrs = (po.billing_address || '').split(' | ').filter(Boolean);
+        const billGstins = (po.billing_gstin || '').split(' | ').filter(Boolean);
+        const maxBill = Math.max(billAddrs.length, billGstins.length, 1);
+        const allBill = Array.from({ length: maxBill }, (_, i) => ({
+          address: billAddrs[i] || '', gstin: billGstins[i] || '',
+        }));
+        setCpoAllBillingAddresses(allBill);
+
+        // Default to first address
+        const firstShip = allShip[0] || {};
+        const firstBill = allBill[0] || {};
         setFormData(prev => ({
           ...prev,
           warehouse: po.warehouse || prev.warehouse,
@@ -169,7 +207,6 @@ export default function CreateSalesOrder() {
           payment_terms: po.payment_terms || prev.payment_terms,
           currency: po.currency || prev.currency,
           required_ship_date: po.required_ship_date || prev.required_ship_date,
-          destination: po.destination || prev.destination,
           delivery_terms: po.delivery_type || prev.delivery_terms,
           party_code: po.party_code || prev.party_code,
           delivery_due_date: po.delivery_due_date || prev.delivery_due_date,
@@ -177,12 +214,13 @@ export default function CreateSalesOrder() {
           indent_date: po.indent_date || prev.indent_date,
           dispatched_through: po.dispatched_through || prev.dispatched_through,
           delivery_location: po.delivery_location || prev.delivery_location,
-          consignee_name: po.consignee_name || prev.consignee_name,
-          consignee_address: po.consignee_address || prev.consignee_address,
-          consignee_gstin: po.consignee_gstin || prev.consignee_gstin,
-          billing_address: po.billing_address || prev.billing_address,
-          billing_gstin: po.billing_gstin || prev.billing_gstin,
+          consignee_name: firstShip.name || prev.consignee_name,
+          consignee_address: firstShip.address || prev.consignee_address,
+          consignee_gstin: firstShip.gstin || prev.consignee_gstin,
+          billing_address: firstBill.address || prev.billing_address,
+          billing_gstin: firstBill.gstin || prev.billing_gstin,
           special_instructions: po.special_instructions || prev.special_instructions,
+          destination: getDistrictState(firstShip.address) || po.destination || prev.destination,
         }));
       }
 
@@ -539,11 +577,14 @@ export default function CreateSalesOrder() {
               <div><label className="block text-sm font-medium text-slate-700 mb-1">Delivery Due Date</label>
                 <input type="date" name="delivery_due_date" value={formData.delivery_due_date} onChange={handleChange} className={inputClass} /></div>
               <div><label className="block text-sm font-medium text-slate-700 mb-1">Destination</label>
-                <input type="text" name="destination" value={formData.destination} onChange={handleChange} className={inputClass} /></div>
+                <input type="text" name="destination" value={formData.destination} readOnly className={`${inputClass} bg-slate-50 text-slate-600`} />
+                <p className="text-xs text-slate-400 mt-0.5">Auto-filled from shipping address (District, State)</p></div>
               <div><label className="block text-sm font-medium text-slate-700 mb-1">Delivery Location</label>
                 <input type="text" name="delivery_location" value={formData.delivery_location} onChange={handleChange} className={inputClass} /></div>
               <div><label className="block text-sm font-medium text-slate-700 mb-1">Dispatched Through</label>
-                <input type="text" name="dispatched_through" value={formData.dispatched_through} onChange={handleChange} className={inputClass} /></div>
+                <select name="dispatched_through" value={formData.dispatched_through} onChange={handleChange} className={inputClass}>
+                  {DISPATCHED_THROUGH_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select></div>
               <div><label className="block text-sm font-medium text-slate-700 mb-1">Indent No</label>
                 <input type="text" name="indent_no" value={formData.indent_no} onChange={handleChange} className={inputClass} /></div>
               <div><label className="block text-sm font-medium text-slate-700 mb-1">Indent Date</label>
@@ -555,24 +596,82 @@ export default function CreateSalesOrder() {
           <div>
             <h3 className="text-lg font-semibold text-slate-800 mb-4 pb-2 border-b">Consignee & Billing</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Shipping Address Selection */}
               <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
                 <h4 className="text-sm font-semibold text-blue-800 mb-3">Consignee (Ship To)</h4>
-                <p className="text-xs text-blue-600 mb-3">Auto-filled from Customer PO</p>
+
+                {/* Show all CPO shipping addresses as selectable options */}
+                {cpoShippingAddresses.length > 1 && (
+                  <div className="mb-4">
+                    <p className="text-xs font-medium text-blue-700 mb-2">Select shipping address from Customer PO:</p>
+                    <div className="space-y-2">
+                      {cpoShippingAddresses.map((sa, idx) => {
+                        const isSelected = formData.consignee_name === sa.name && formData.consignee_address === sa.address;
+                        return (
+                          <label key={idx} className={`flex items-start gap-2 p-2.5 rounded-lg border cursor-pointer transition ${isSelected ? 'bg-blue-100 border-blue-400 ring-1 ring-blue-400' : 'bg-white border-slate-200 hover:border-blue-300'}`}>
+                            <input type="radio" name="ship_addr_select" checked={isSelected}
+                              onChange={() => setFormData(prev => ({
+                                ...prev, consignee_name: sa.name, consignee_address: sa.address,
+                                consignee_gstin: sa.gstin, destination: getDistrictState(sa.address),
+                              }))}
+                              className="mt-0.5 w-3.5 h-3.5 text-blue-600 border-slate-300 focus:ring-blue-500" />
+                            <div className="text-xs">
+                              <p className="font-semibold text-slate-800">{sa.name || `Address #${idx + 1}`}</p>
+                              <p className="text-slate-600 mt-0.5">{formatAddressDisplay(sa.address) || 'No address'}</p>
+                              {sa.gstin && <p className="text-slate-500 mt-0.5">GSTIN: {sa.gstin}</p>}
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Editable selected address */}
                 <div className="space-y-3">
                   <div><label className="block text-xs font-medium text-slate-600 mb-1">Name</label>
                     <input type="text" name="consignee_name" value={formData.consignee_name} onChange={handleChange} className={inputClass} /></div>
-                  <div><label className="block text-xs font-medium text-slate-600 mb-1">Address</label>
-                    <textarea name="consignee_address" value={formData.consignee_address} onChange={handleChange} rows={2} className={inputClass} /></div>
+                  <AddressField label="Address" value={formData.consignee_address} onChange={(v) => {
+                    setFormData(prev => ({ ...prev, consignee_address: v, destination: getDistrictState(v) }));
+                  }} />
                   <div><label className="block text-xs font-medium text-slate-600 mb-1">GST No</label>
                     <input type="text" name="consignee_gstin" value={formData.consignee_gstin} onChange={handleChange} className={inputClass} /></div>
                 </div>
               </div>
+
+              {/* Billing Address Selection */}
               <div className="p-4 bg-green-50 rounded-lg border border-green-200">
                 <h4 className="text-sm font-semibold text-green-800 mb-3">Billing Address</h4>
-                <p className="text-xs text-green-600 mb-3">Auto-filled from Customer PO</p>
+
+                {/* Show all CPO billing addresses as selectable options */}
+                {cpoAllBillingAddresses.length > 1 && (
+                  <div className="mb-4">
+                    <p className="text-xs font-medium text-green-700 mb-2">Select billing address from Customer PO:</p>
+                    <div className="space-y-2">
+                      {cpoAllBillingAddresses.map((ba, idx) => {
+                        const isSelected = formData.billing_address === ba.address;
+                        return (
+                          <label key={idx} className={`flex items-start gap-2 p-2.5 rounded-lg border cursor-pointer transition ${isSelected ? 'bg-green-100 border-green-400 ring-1 ring-green-400' : 'bg-white border-slate-200 hover:border-green-300'}`}>
+                            <input type="radio" name="bill_addr_select" checked={isSelected}
+                              onChange={() => setFormData(prev => ({
+                                ...prev, billing_address: ba.address, billing_gstin: ba.gstin,
+                              }))}
+                              className="mt-0.5 w-3.5 h-3.5 text-green-600 border-slate-300 focus:ring-green-500" />
+                            <div className="text-xs">
+                              <p className="font-semibold text-slate-800">Billing #{idx + 1}</p>
+                              <p className="text-slate-600 mt-0.5">{formatAddressDisplay(ba.address) || 'No address'}</p>
+                              {ba.gstin && <p className="text-slate-500 mt-0.5">GSTIN: {ba.gstin}</p>}
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Editable selected address */}
                 <div className="space-y-3">
-                  <div><label className="block text-xs font-medium text-slate-600 mb-1">Address</label>
-                    <textarea name="billing_address" value={formData.billing_address} onChange={handleChange} rows={2} className={inputClass} /></div>
+                  <AddressField label="Address" value={formData.billing_address} onChange={(v) => setFormData(prev => ({ ...prev, billing_address: v }))} />
                   <div><label className="block text-xs font-medium text-slate-600 mb-1">GST No</label>
                     <input type="text" name="billing_gstin" value={formData.billing_gstin} onChange={handleChange} className={inputClass} /></div>
                 </div>

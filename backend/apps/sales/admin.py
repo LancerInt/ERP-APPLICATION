@@ -399,7 +399,6 @@ class FreightAdviceOutboundAdmin(admin.ModelAdmin):
     """Admin for outbound freight advices"""
     list_display = [
         'advice_no',
-        'dispatch_challan',
         'transporter',
         'freight_type',
         'payable_amount',
@@ -424,7 +423,6 @@ class FreightAdviceOutboundAdmin(admin.ModelAdmin):
             'fields': (
                 'id',
                 'advice_no',
-                'dispatch_challan',
                 'transporter',
                 'freight_type',
                 'direction',

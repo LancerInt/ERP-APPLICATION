@@ -7,6 +7,7 @@ import PageHeader from '../../../components/common/PageHeader';
 import apiClient from '../../../utils/api.js';
 import { getApiErrorMessage } from '../../../utils/formHelpers.js';
 import useLookup from '../../../hooks/useLookup.js';
+import AddressField from '../../../components/common/AddressField';
 
 const inputClass = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500';
 const readOnlyClass = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-slate-50 text-slate-600';
@@ -387,7 +388,7 @@ export default function CreateSalesInvoice() {
                 </select>
               </Field>
               <Field label="Name" name="consignee_name" value={formData.consignee_name} />
-              <Field label="Address" name="consignee_address" value={formData.consignee_address} />
+              <AddressField label="Address" value={formData.consignee_address} onChange={(v) => setFormData(prev => ({ ...prev, consignee_address: v }))} />
               <Field label="GSTIN" name="consignee_gstin" value={formData.consignee_gstin} />
               <Field label="State" name="consignee_state" value={formData.consignee_state} />
               <Field label="State Code" name="consignee_state_code" value={formData.consignee_state_code} />
@@ -399,7 +400,7 @@ export default function CreateSalesInvoice() {
             <SectionTitle>Buyer (Bill to)</SectionTitle>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Field label="Name" name="buyer_name" value={formData.buyer_name} />
-              <Field label="Address" name="buyer_address" value={formData.buyer_address} />
+              <AddressField label="Address" value={formData.buyer_address} onChange={(v) => setFormData(prev => ({ ...prev, buyer_address: v }))} />
               <Field label="GSTIN" name="buyer_gstin" value={formData.buyer_gstin} />
               <Field label="State" name="buyer_state" value={formData.buyer_state} />
               <Field label="State Code" name="buyer_state_code" value={formData.buyer_state_code} />

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { ArrowLeft, Trash2, FileText } from 'lucide-react';
+import { ArrowLeft, Edit3, Trash2, FileText } from 'lucide-react';
 import MainLayout from '../../../components/layout/MainLayout';
 import StatusBadge from '../../../components/common/StatusBadge';
 import apiClient from '../../../utils/api.js';
@@ -10,7 +10,7 @@ import usePermissions from '../../../hooks/usePermissions.js';
 export default function FreightPaymentDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { canDelete } = usePermissions();
+  const { canEdit, canDelete } = usePermissions();
   const [payment, setPayment] = useState(null);
   const [freight, setFreight] = useState(null);
   const [allPayments, setAllPayments] = useState([]);
@@ -80,6 +80,9 @@ export default function FreightPaymentDetail() {
             </div>
           </div>
           <div className="flex items-center gap-3 ml-8 sm:ml-0">
+            {canEdit('Freight Advice') && (
+              <button onClick={() => navigate(`/sales/freight-payments/${id}/edit`)} className="flex items-center gap-2 px-4 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 text-sm font-medium"><Edit3 size={16} /> Edit</button>
+            )}
             {canDelete('Freight Advice') && (
               <button onClick={handleDelete} className="flex items-center gap-2 px-4 py-2 border border-red-300 rounded-lg text-red-600 hover:bg-red-50 text-sm font-medium"><Trash2 size={16} /> Delete</button>
             )}

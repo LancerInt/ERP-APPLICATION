@@ -6,6 +6,7 @@ import MainLayout from '../../../components/layout/MainLayout';
 import StatusBadge from '../../../components/common/StatusBadge';
 import apiClient from '../../../utils/api.js';
 import usePermissions from '../../../hooks/usePermissions.js';
+import { formatAddressDisplay } from '../../../components/common/AddressField';
 
 export default function CustomerPODetail() {
   const { id } = useParams();
@@ -161,7 +162,7 @@ export default function CustomerPODetail() {
                               <span className="text-xs font-semibold text-blue-600">#{i + 1}</span>
                               {shipNames[i] && <span className="text-sm font-medium text-slate-900">{shipNames[i]}</span>}
                             </div>
-                            {shipAddrs[i] && <p className="text-sm text-slate-600">{shipAddrs[i]}</p>}
+                            {shipAddrs[i] && <p className="text-sm text-slate-600">{formatAddressDisplay(shipAddrs[i])}</p>}
                             {shipGstins[i] && <p className="text-xs text-slate-500 mt-0.5">GSTIN: {shipGstins[i]}</p>}
                           </div>
                         ))}
@@ -175,7 +176,7 @@ export default function CustomerPODetail() {
                         {Array.from({ length: maxBill }, (_, i) => (
                           <div key={i} className="p-3 bg-green-50 rounded-lg border border-green-100">
                             <span className="text-xs font-semibold text-green-600">#{i + 1}</span>
-                            {billAddrs[i] && <p className="text-sm text-slate-600 mt-1">{billAddrs[i]}</p>}
+                            {billAddrs[i] && <p className="text-sm text-slate-600 mt-1">{formatAddressDisplay(billAddrs[i])}</p>}
                             {billGstins[i] && <p className="text-xs text-slate-500 mt-0.5">GSTIN: {billGstins[i]}</p>}
                           </div>
                         ))}

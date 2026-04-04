@@ -78,9 +78,9 @@ class CustomerPOUpload(BaseModel):
     dispatched_through = models.CharField(max_length=255, blank=True, default='')
     consignee_name = models.CharField(max_length=255, blank=True, default='', help_text="Ship to name - auto-filled from customer")
     consignee_address = models.TextField(blank=True, default='', help_text="Ship to address - auto-filled from customer")
-    consignee_gstin = models.CharField(max_length=20, blank=True, default='')
+    consignee_gstin = models.CharField(max_length=500, blank=True, default='')
     billing_address = models.TextField(blank=True, default='', help_text="Company billing address")
-    billing_gstin = models.CharField(max_length=20, blank=True, default='')
+    billing_gstin = models.CharField(max_length=500, blank=True, default='')
     special_instructions = models.TextField(blank=True, default='')
     delivery_location = models.CharField(max_length=500, blank=True, default='')
     destination = models.CharField(max_length=255, blank=True, default='')
@@ -266,9 +266,9 @@ class SalesOrder(BaseModel):
     delivery_location = models.CharField(max_length=500, blank=True, default='')
     consignee_name = models.CharField(max_length=255, blank=True, default='')
     consignee_address = models.TextField(blank=True, default='')
-    consignee_gstin = models.CharField(max_length=20, blank=True, default='')
+    consignee_gstin = models.CharField(max_length=500, blank=True, default='')
     billing_address = models.TextField(blank=True, default='')
-    billing_gstin = models.CharField(max_length=20, blank=True, default='')
+    billing_gstin = models.CharField(max_length=500, blank=True, default='')
     special_instructions = models.TextField(blank=True, default='')
     remarks = models.TextField(blank=True, default='')
     approval_status = models.CharField(
@@ -639,7 +639,7 @@ class SalesInvoiceCheck(BaseModel):
     # Consignee (Ship to) - can differ from buyer
     consignee_name = models.CharField(max_length=255, blank=True, default='')
     consignee_address = models.TextField(blank=True, default='')
-    consignee_gstin = models.CharField(max_length=20, blank=True, default='')
+    consignee_gstin = models.CharField(max_length=500, blank=True, default='')
     consignee_state = models.CharField(max_length=100, blank=True, default='')
     consignee_state_code = models.CharField(max_length=10, blank=True, default='')
 
@@ -929,13 +929,6 @@ class FreightAdviceOutbound(BaseModel):
         blank=True,
         related_name='outward_freights',
         help_text="Link to Freight Detail parent entry"
-    )
-    dispatch_challan = models.ForeignKey(
-        DispatchChallan,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='freight_advices'
     )
     transporter = models.ForeignKey(
         'master.Transporter',

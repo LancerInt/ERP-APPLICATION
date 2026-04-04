@@ -7,6 +7,7 @@ import PageHeader from '../../../components/common/PageHeader';
 import apiClient from '../../../utils/api.js';
 import { getApiErrorMessage } from '../../../utils/formHelpers.js';
 import useLookup from '../../../hooks/useLookup.js';
+import AddressField from '../../../components/common/AddressField';
 
 const inputClass = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500';
 
@@ -355,8 +356,7 @@ export default function EditSalesInvoice() {
                   <input type="text" name="consignee_name" value={formData.consignee_name} onChange={handleChange} className={inputClass} />
                 </div>
                 <div className="lg:col-span-2">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Consignee Address</label>
-                  <textarea name="consignee_address" value={formData.consignee_address} onChange={handleChange} rows={2} className={inputClass} />
+                  <AddressField label="Consignee Address" value={formData.consignee_address} onChange={(v) => setFormData(prev => ({ ...prev, consignee_address: v }))} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Consignee GSTIN</label>
@@ -382,8 +382,7 @@ export default function EditSalesInvoice() {
                   <input type="text" name="buyer_name" value={formData.buyer_name} onChange={handleChange} className={inputClass} />
                 </div>
                 <div className="lg:col-span-2">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Buyer Address</label>
-                  <textarea name="buyer_address" value={formData.buyer_address} onChange={handleChange} rows={2} className={inputClass} />
+                  <AddressField label="Buyer Address" value={formData.buyer_address} onChange={(v) => setFormData(prev => ({ ...prev, buyer_address: v }))} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Buyer GSTIN</label>

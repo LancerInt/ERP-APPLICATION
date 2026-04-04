@@ -7,6 +7,7 @@ import PageHeader from '../../../components/common/PageHeader';
 import apiClient from '../../../utils/api.js';
 import { getApiErrorMessage } from '../../../utils/formHelpers.js';
 import useLookup from '../../../hooks/useLookup.js';
+import AddressField from '../../../components/common/AddressField';
 
 const inputClass = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500';
 
@@ -388,13 +389,14 @@ export default function CreateCustomerPO() {
                       <button type="button" onClick={() => setShippingAddresses(prev => prev.filter((_, i) => i !== idx))} className="text-red-500 hover:text-red-700"><Trash2 size={14} /></button>
                     )}
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <div><label className="block text-xs font-medium text-slate-600 mb-1">Name</label>
-                      <input type="text" value={sa.name} onChange={(e) => setShippingAddresses(prev => prev.map((s, i) => i === idx ? { ...s, name: e.target.value } : s))} className={inputClass} /></div>
-                    <div><label className="block text-xs font-medium text-slate-600 mb-1">Address</label>
-                      <input type="text" value={sa.address} onChange={(e) => setShippingAddresses(prev => prev.map((s, i) => i === idx ? { ...s, address: e.target.value } : s))} className={inputClass} /></div>
-                    <div><label className="block text-xs font-medium text-slate-600 mb-1">GST No</label>
-                      <input type="text" value={sa.gstin} onChange={(e) => setShippingAddresses(prev => prev.map((s, i) => i === idx ? { ...s, gstin: e.target.value } : s))} className={inputClass} placeholder="GSTIN" /></div>
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      <div><label className="block text-xs font-medium text-slate-600 mb-1">Name</label>
+                        <input type="text" value={sa.name} onChange={(e) => setShippingAddresses(prev => prev.map((s, i) => i === idx ? { ...s, name: e.target.value } : s))} className={inputClass} /></div>
+                      <div><label className="block text-xs font-medium text-slate-600 mb-1">GST No</label>
+                        <input type="text" value={sa.gstin} onChange={(e) => setShippingAddresses(prev => prev.map((s, i) => i === idx ? { ...s, gstin: e.target.value } : s))} className={inputClass} placeholder="GSTIN" /></div>
+                    </div>
+                    <AddressField value={sa.address} onChange={(v) => setShippingAddresses(prev => prev.map((s, i) => i === idx ? { ...s, address: v } : s))} />
                   </div>
                 </div>
               ))}
@@ -455,13 +457,14 @@ export default function CreateCustomerPO() {
                       <span className="text-xs text-slate-700">Factory Address</span>
                     </label>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <div><label className="block text-xs font-medium text-slate-600 mb-1">Name</label>
-                      <input type="text" value={ba.name || ''} onChange={(e) => setBillingAddresses(prev => prev.map((b, i) => i === idx ? { ...b, name: e.target.value } : b))} className={inputClass} /></div>
-                    <div><label className="block text-xs font-medium text-slate-600 mb-1">Address</label>
-                      <input type="text" value={ba.address} onChange={(e) => setBillingAddresses(prev => prev.map((b, i) => i === idx ? { ...b, address: e.target.value } : b))} className={inputClass} /></div>
-                    <div><label className="block text-xs font-medium text-slate-600 mb-1">GST No</label>
-                      <input type="text" value={ba.gstin} onChange={(e) => setBillingAddresses(prev => prev.map((b, i) => i === idx ? { ...b, gstin: e.target.value } : b))} className={inputClass} placeholder="GSTIN" /></div>
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      <div><label className="block text-xs font-medium text-slate-600 mb-1">Name</label>
+                        <input type="text" value={ba.name || ''} onChange={(e) => setBillingAddresses(prev => prev.map((b, i) => i === idx ? { ...b, name: e.target.value } : b))} className={inputClass} /></div>
+                      <div><label className="block text-xs font-medium text-slate-600 mb-1">GST No</label>
+                        <input type="text" value={ba.gstin} onChange={(e) => setBillingAddresses(prev => prev.map((b, i) => i === idx ? { ...b, gstin: e.target.value } : b))} className={inputClass} placeholder="GSTIN" /></div>
+                    </div>
+                    <AddressField value={ba.address} onChange={(v) => setBillingAddresses(prev => prev.map((b, i) => i === idx ? { ...b, address: v } : b))} />
                   </div>
                 </div>
               ))}

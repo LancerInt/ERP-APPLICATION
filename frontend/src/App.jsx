@@ -117,6 +117,8 @@ import SalesFreightEdit from './pages/sales/freight/edit.jsx';
 import FreightPayments from './pages/sales/freight-payments/index.jsx';
 import FreightPaymentNew from './pages/sales/freight-payments/new.jsx';
 import FreightPaymentDetail from './pages/sales/freight-payments/[id].jsx';
+import FreightPaymentEdit from './pages/sales/freight-payments/edit.jsx';
+import FreightPaymentStatement from './pages/sales/freight-payments/statement.jsx';
 import ReceivableNew from './pages/sales/receivables/new.jsx';
 import ReceivableDetail from './pages/sales/receivables/[id].jsx';
 import ReceivableEdit from './pages/sales/receivables/edit.jsx';
@@ -336,6 +338,8 @@ function App() {
           <Route path="/sales/freight-payments" element={<ProtectedRoute module="Freight Advice"><FreightPayments /></ProtectedRoute>} />
           <Route path="/sales/freight-payments/new" element={<ProtectedRoute module="Freight Advice" action="create"><FreightPaymentNew /></ProtectedRoute>} />
           <Route path="/sales/freight-payments/:id" element={<ProtectedRoute module="Freight Advice"><FreightPaymentDetail /></ProtectedRoute>} />
+          <Route path="/sales/freight-payments/:id/edit" element={<ProtectedRoute module="Freight Advice" action="edit"><FreightPaymentEdit /></ProtectedRoute>} />
+          <Route path="/sales/freight-payments/statement" element={<ProtectedRoute module="Freight Advice"><FreightPaymentStatement /></ProtectedRoute>} />
           <Route path="/sales/receivables" element={<ProtectedRoute module="Receivable"><Receivables /></ProtectedRoute>} />
           <Route path="/sales/receivables/new" element={<ProtectedRoute module="Receivable" action="create"><ReceivableNew /></ProtectedRoute>} />
           <Route path="/sales/receivables/:id" element={<ProtectedRoute module="Receivable"><ReceivableDetail /></ProtectedRoute>} />
